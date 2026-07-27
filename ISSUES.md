@@ -8,7 +8,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 1: Publish one completion through a fake Discord service
 - [x] Slice 2: Preserve task-to-thread continuity
 - [x] Slice 3: Deliver safe attention notifications
-- [ ] Slice 4: Keep Codex independent from Discord failures
+- [x] Slice 4: Keep Codex independent from Discord failures
 - [ ] Slice 5: Prove the transport in a private Discord server
 - [ ] Slice 6: Select the reliable Codex lifecycle inputs
 - [ ] Slice 7: Notify automatically when a Codex turn stops
@@ -142,18 +142,18 @@ and ensure the caller can finish promptly regardless of Discord availability.
 
 ### Acceptance criteria
 
-- [ ] Transient server and rate-limit responses receive bounded,
+- [x] Transient server and rate-limit responses receive bounded,
       delay-aware retries.
-- [ ] Authentication, validation, and other permanent failures are not retried
+- [x] Authentication, validation, and other permanent failures are not retried
       indefinitely.
-- [ ] Connection failures and slow responses stop within a defined timeout and
+- [x] Connection failures and slow responses stop within a defined timeout and
       do not hang the caller.
-- [ ] A stale, deleted, or inaccessible thread mapping is handled according to
+- [x] A stale, deleted, or inaccessible thread mapping is handled according to
       a documented recovery rule without corrupting other mappings.
-- [ ] Logs and returned diagnostics never contain the webhook credential.
-- [ ] Delivery failure is observable but does not change the originating Codex
+- [x] Logs and returned diagnostics never contain the webhook credential.
+- [x] Delivery failure is observable but does not change the originating Codex
       task result.
-- [ ] Fake-service tests cover success, retry, timeout, permanent failure, and
+- [x] Fake-service tests cover success, retry, timeout, permanent failure, and
       stale-routing recovery.
 
 ### Blocked by

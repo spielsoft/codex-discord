@@ -163,6 +163,34 @@ webhook URL should come from an environment variable or the macOS Keychain.
 The final packaging should provide a deliberate setup command rather than
 asking users to edit source files.
 
+## Best-effort delivery contract
+
+The public `publish` command separates notification delivery from the result of
+the Codex task that produced it. Once a notification is locally valid, the
+command exits successfully and prints a JSON delivery outcome. Successful
+delivery uses `status: "published"`; exhausted or permanent transport failures
+use `status: "delivery-failed"` with a credential-free diagnostic, the attempt
+count, and whether the failure was transient. Invalid JSON, invalid local
+configuration, and invalid notification fields still produce a nonzero exit.
+
+Default delivery is bounded to three HTTP attempts and six seconds overall.
+Each connection or read operation is capped at two seconds. HTTP 429, 408, 425,
+5xx responses, connection failures, and read timeouts are retryable. Retry
+delays honor Discord's `Retry-After` or `X-RateLimit-Reset-After` value when
+present, fall back to a short exponential delay, and are capped at two seconds.
+Other 4xx responses are permanent and are not retried as ordinary transport
+failures. The command exposes `--max-attempts`,
+`--request-timeout-seconds`, and `--delivery-timeout-seconds` for a stricter
+local budget.
+
+A stored thread route has one narrow recovery rule. When an append to a known
+thread returns HTTP 403 or 404, the adapter removes only that session's route
+and makes at most one fresh forum-post attempt within the same attempt and time
+budgets. A successful replacement becomes the new route. If replacement
+fails, that session remains unmapped so a later invocation can try creating a
+new post; routes for other sessions are unchanged. HTTP 401 and failures while
+creating a new post never trigger stale-route recovery.
+
 ## Skill or plugin?
 
 A skill can teach Codex when and how to send a structured Discord message. It

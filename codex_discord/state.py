@@ -2,9 +2,14 @@ import fcntl
 import json
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Iterator, Union
+
+
+class RoutingStateTimeout(TimeoutError):
+    """The routing-state lock could not be acquired within its time budget."""
 
 
 class RoutingState:
@@ -15,10 +20,26 @@ class RoutingState:
         self.lock_path = self.path.with_name(f"{self.path.name}.lock")
 
     @contextmanager
-    def locked_routes(self) -> Iterator[Dict[str, str]]:
+    def locked_routes(
+        self, timeout_seconds: float = 6.0
+    ) -> Iterator[Dict[str, str]]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.lock_path.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                try:
+                    fcntl.flock(
+                        lock_file.fileno(),
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                    break
+                except BlockingIOError:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise RoutingStateTimeout(
+                            "routing-state lock acquisition timed out"
+                        )
+                    time.sleep(min(0.01, remaining))
             routes = self._read()
             original = routes.copy()
             try:
