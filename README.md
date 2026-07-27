@@ -234,8 +234,11 @@ requirements, the current expectation is:
 > Build and validate the behavior in this workspace, then package it as a
 > Codex plugin containing a small companion skill.
 
-This remains a hypothesis until the prototype confirms the relevant Codex hook
-behavior across the Codex desktop app and CLI.
+The reusable package now lives at
+[`plugins/codex-discord`](plugins/codex-discord/README.md). It bundles the
+proven runtime, default-discovered lifecycle hooks, setup and diagnostic
+commands, and a focused explicit-milestone skill without user configuration or
+marketplace metadata.
 
 ## Development phases
 

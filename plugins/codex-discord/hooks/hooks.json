@@ -1,0 +1,29 @@
+{
+  "description": "Notification-only Codex completion and attention hooks.",
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_DISCORD_STATE_FILE=\"${CODEX_DISCORD_STATE_FILE:-$PLUGIN_DATA/routing.json}\" /usr/bin/python3 \"$PLUGIN_ROOT/scripts/codex-discord\" attention-hook",
+            "timeout": 7,
+            "statusMessage": "Sending attention request to Discord"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CODEX_DISCORD_STATE_FILE=\"${CODEX_DISCORD_STATE_FILE:-$PLUGIN_DATA/routing.json}\" /usr/bin/python3 \"$PLUGIN_ROOT/scripts/codex-discord\" stop-hook",
+            "timeout": 7,
+            "statusMessage": "Sending completion to Discord"
+          }
+        ]
+      }
+    ]
+  }
+}

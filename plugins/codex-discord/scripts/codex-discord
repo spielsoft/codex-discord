@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Installed-plugin command boundary for the bundled notification runtime."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_ROOT = PLUGIN_ROOT / "runtime"
+WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
+MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
+STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+
+
+def _plugin_data() -> Path:
+    configured = os.environ.get("PLUGIN_DATA", "")
+    if configured.strip():
+        return Path(configured).expanduser()
+    return Path.home() / ".codex" / "codex-discord"
+
+
+def _configure_runtime() -> None:
+    sys.path.insert(0, str(RUNTIME_ROOT))
+    os.environ.setdefault(
+        STATE_ENVIRONMENT,
+        str(_plugin_data() / "routing.json"),
+    )
+
+
+def _print_setup() -> int:
+    result = {
+        "status": "setup-required",
+        "required_environment": [
+            WEBHOOK_ENVIRONMENT,
+            MENTION_ENVIRONMENT,
+        ],
+        "optional_environment": [STATE_ENVIRONMENT],
+        "state_default": str(_plugin_data() / "routing.json"),
+        "next_action": (
+            "Set the required values in the process that launches Codex, "
+            "then run this command with doctor."
+        ),
+        "documentation": str(PLUGIN_ROOT / "README.md"),
+    }
+    json.dump(result, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _print_uninstall() -> int:
+    result = {
+        "status": "removal-guidance",
+        "steps": [
+            (
+                "Remove codex-discord from its configured marketplace, "
+                "then restart Codex."
+            ),
+            "Verify /hooks no longer lists the plugin Stop and PermissionRequest hooks.",
+            "Stop exporting the plugin configuration values.",
+            "Retain or remove the routing state and adjacent lock file intentionally.",
+            "Delete the Discord webhook to revoke the credential when desired.",
+        ],
+        "retained_state": str(_plugin_data() / "routing.json"),
+        "documentation": str(PLUGIN_ROOT / "README.md"),
+    }
+    json.dump(result, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _run_public_command(operation: str, arguments: list[str]) -> int:
+    from codex_discord.__main__ import main
+
+    if operation == "doctor":
+        sys.argv = ["codex-discord", "doctor", *arguments]
+        return main()
+
+    endpoint = os.environ.get(WEBHOOK_ENVIRONMENT, "").strip()
+    if not endpoint:
+        print(
+            f"{operation} failed: {WEBHOOK_ENVIRONMENT} is not configured",
+            file=sys.stderr,
+        )
+        return 1
+    state_file = os.environ[STATE_ENVIRONMENT]
+    if operation == "milestone":
+        sys.argv = [
+            "codex-discord",
+            "milestone",
+            "--endpoint",
+            endpoint,
+            "--state-file",
+            state_file,
+            "--enable",
+            *arguments,
+        ]
+        return main()
+    raise AssertionError("unsupported public operation")
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print(
+            "usage: codex-discord {setup|doctor|milestone|stop-hook|"
+            "attention-hook|uninstall}",
+            file=sys.stderr,
+        )
+        return 1
+
+    _configure_runtime()
+    operation = sys.argv[1]
+    arguments = sys.argv[2:]
+    if operation == "setup":
+        return _print_setup()
+    if operation == "uninstall":
+        return _print_uninstall()
+    if operation in ("doctor", "milestone"):
+        return _run_public_command(operation, arguments)
+    if arguments:
+        print(f"{operation} does not accept arguments", file=sys.stderr)
+        return 1
+    if operation == "stop-hook":
+        from codex_discord.stop_hook import main as hook_main
+
+        return hook_main()
+    if operation == "attention-hook":
+        from codex_discord.attention_hook import main as hook_main
+
+        return hook_main()
+
+    print(f"unknown operation: {operation}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

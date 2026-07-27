@@ -14,7 +14,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 7: Notify automatically when a Codex turn stops
 - [x] Slice 8: Notify automatically when Codex needs attention
 - [x] Slice 9: Add setup and operational diagnostics
-- [ ] Slice 10: Package the integration as a Codex plugin
+- [x] Slice 10: Package the integration as a Codex plugin
 - [ ] Slice 11: Clean the test suite and verify release readiness
 
 ## Slice 1: Publish one completion through a fake Discord service
@@ -419,21 +419,32 @@ configuration or secrets.
 
 ### Acceptance criteria
 
-- [ ] The package has a valid Codex plugin manifest and bundles only the
+- [x] The package has a valid Codex plugin manifest and bundles only the
       required hooks, runtime assets, documentation, and companion skill.
-- [ ] Plugin installation exposes the lifecycle hooks and user-facing commands
+- [x] Plugin installation exposes the lifecycle hooks and user-facing commands
       through the documented trust and setup flow.
-- [ ] No Discord credential, user identifier, routing state, or live-test
+- [x] No Discord credential, user identifier, routing state, or live-test
       artifact is contained in the package.
-- [ ] The companion skill describes explicit notification workflows without
+- [x] The companion skill describes explicit notification workflows without
       replacing deterministic lifecycle hooks.
-- [ ] A clean-install test exercises configuration diagnostics and an offline
+- [x] A clean-install test exercises configuration diagnostics and an offline
       notification contract.
-- [ ] An opt-in installed-plugin smoke test delivers a live notification.
-- [ ] Supported Codex surfaces and runtime prerequisites are stated based on
+- [x] An opt-in installed-plugin smoke test delivers a live notification.
+- [x] Supported Codex surfaces and runtime prerequisites are stated based on
       evidence from the compatibility spike.
-- [ ] Removal guidance returns Codex to its pre-plugin hook behavior and
+- [x] Removal guidance returns Codex to its pre-plugin hook behavior and
       explains retained local data.
+
+### Slice 10 outcome
+
+The repository-contained `plugins/codex-discord` package has a validated
+manifest, default-discovered lifecycle hooks, an independent standard-library
+runtime, setup/doctor/milestone/removal commands, and a focused milestone
+skill. Clean-copy tests exercise the packaged hooks and commands without the
+workspace runtime. An isolated packaged-hook smoke delivered live on July 27,
+2026. A real `codex plugin add` remains an explicit opt-in because the installed
+CLI exposes no isolated config-directory flag and installation mutates the
+user's process-wide Codex configuration.
 
 ### Blocked by
 

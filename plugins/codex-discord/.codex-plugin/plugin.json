@@ -1,0 +1,24 @@
+{
+  "name": "codex-discord",
+  "version": "0.1.0",
+  "description": "Send one-way Codex lifecycle and milestone notifications to Discord forum posts.",
+  "author": {
+    "name": "Codex Discord contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Discord",
+    "shortDescription": "Send safe Codex task updates to Discord.",
+    "longDescription": "Bundles notification-only Stop and PermissionRequest hooks, an offline-first diagnostic command, and an explicit milestone skill.",
+    "developerName": "Codex Discord contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Lifecycle hooks",
+      "Explicit milestones"
+    ],
+    "defaultPrompt": [
+      "Check my Codex Discord configuration.",
+      "Send an explicit Discord milestone."
+    ]
+  }
+}

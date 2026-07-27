@@ -117,8 +117,9 @@ These are separate operations:
    its value from Keychain or the chosen secret manager. Removing code or an
    environment variable does not revoke the webhook.
 5. **Uninstall workspace code:** only after disabling hooks, remove the
-   integration package or workspace checkout. Plugin packaging and its
-   installation-specific removal path are added in Slice 10.
+   integration package or workspace checkout. For an installed plugin, follow
+   the package-specific trust, state-retention, and removal guidance in
+   [`plugins/codex-discord/README.md`](../plugins/codex-discord/README.md).
 
 The Discord forum posts remain in Discord until removed there.
 
