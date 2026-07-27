@@ -11,7 +11,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 4: Keep Codex independent from Discord failures
 - [x] Slice 5: Prove the transport in a private Discord server
 - [x] Slice 6: Select the reliable Codex lifecycle inputs
-- [ ] Slice 7: Notify automatically when a Codex turn stops
+- [x] Slice 7: Notify automatically when a Codex turn stops
 - [ ] Slice 8: Notify automatically when Codex needs attention
 - [ ] Slice 9: Add setup and operational diagnostics
 - [ ] Slice 10: Package the integration as a Codex plugin
@@ -275,19 +275,28 @@ while delivery remains best effort and testable with sanitized fixtures.
 
 ### Acceptance criteria
 
-- [ ] The supported completion event invokes the same public publishing path
+- [x] The supported completion event invokes the same public publishing path
       proven by earlier slices.
-- [ ] The event's Codex session identity controls Discord thread routing.
-- [ ] The selected task-title and summary strategy produces a useful
+- [x] The event's Codex session identity controls Discord thread routing.
+- [x] The selected task-title and summary strategy produces a useful
       notification without exposing a raw transcript.
-- [ ] A second turn in the same Codex session appends to the original Discord
+- [x] A second turn in the same Codex session appends to the original Discord
       thread.
-- [ ] Hook execution returns within the defined timeout when Discord is
+- [x] Hook execution returns within the defined timeout when Discord is
       unavailable.
-- [ ] Lifecycle fixture tests verify completed delivery, repeat-turn routing,
+- [x] Lifecycle fixture tests verify completed delivery, repeat-turn routing,
       malformed input, and transport failure.
-- [ ] An opt-in live test demonstrates an automatic completion from at least
+- [x] An opt-in live test demonstrates an automatic completion from at least
       one supported Codex surface.
+
+### Slice 7 outcome
+
+The structured `Stop` hook uses `session_id` for routing, the working-directory
+basename for project, a generic title when no explicit title has seeded the
+thread, and bounded `last_assistant_message` content with a generic fallback.
+It never opens `transcript_path` and always exits successfully. An opt-in CLI
+smoke on July 27, 2026 delivered two automatic turns into one Discord forum
+post. The temporary active workspace hook was removed after verification.
 
 ### Blocked by
 

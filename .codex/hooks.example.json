@@ -1,0 +1,17 @@
+{
+  "description": "Opt-in Codex completion notifications for this workspace.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && /usr/bin/python3 -m codex_discord.stop_hook",
+            "timeout": 7,
+            "statusMessage": "Sending completion to Discord"
+          }
+        ]
+      }
+    ]
+  }
+}
