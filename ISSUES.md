@@ -9,7 +9,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 2: Preserve task-to-thread continuity
 - [x] Slice 3: Deliver safe attention notifications
 - [x] Slice 4: Keep Codex independent from Discord failures
-- [ ] Slice 5: Prove the transport in a private Discord server
+- [x] Slice 5: Prove the transport in a private Discord server
 - [ ] Slice 6: Select the reliable Codex lifecycle inputs
 - [ ] Slice 7: Notify automatically when a Codex turn stops
 - [ ] Slice 8: Notify automatically when Codex needs attention
@@ -180,18 +180,29 @@ and produces the intended desktop and mobile notification behavior.
 
 ### Acceptance criteria
 
-- [ ] The user creates or selects a private server, forum channel, incoming
+- [x] The user creates or selects a private server, forum channel, incoming
       webhook, and Discord account to mention.
-- [ ] Credentials and user-specific identifiers are supplied through untracked
+- [x] Credentials and user-specific identifiers are supplied through untracked
       local configuration.
-- [ ] The live smoke command creates a readable forum post.
-- [ ] A second event for the same test session appears in the same post.
-- [ ] A different test session creates a different post.
+- [x] The live smoke command creates a readable forum post.
+- [x] A second event for the same test session appears in the same post.
+- [x] A different test session creates a different post.
 - [ ] The user confirms whether ordinary completions should suppress Discord
-      push notifications in addition to suppressing mentions.
+      push notifications in addition to suppressing mentions. Unknown: the
+      user keeps macOS and phone notifications disabled.
 - [ ] The user confirms that attention states produce the intended mobile
-      notification and mention behavior.
-- [ ] The observed decisions are recorded without recording the webhook URL.
+      notification and mention behavior. The mention rendered correctly;
+      desktop/mobile delivery is unknown because notifications are disabled.
+- [x] The observed decisions are recorded without recording the webhook URL.
+
+### Slice 5 outcome
+
+Live forum-post creation, same-session append, separate-session creation, and
+the deliberate attention mention all passed on July 27, 2026. Discord initially
+returned HTTP 403 until the adapter supplied the API-required `User-Agent`;
+an offline regression now protects that request contract. By explicit user
+direction, desktop/mobile notification delivery and the routine-completion push
+policy remain unknown rather than blocking later slices.
 
 ### Blocked by
 

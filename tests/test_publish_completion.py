@@ -27,7 +27,13 @@ class RecordingDiscordHandler(BaseHTTPRequestHandler):
                 self.__class__.next_thread_number += 1
             else:
                 thread_id = query["thread_id"][0]
-            self.__class__.requests.append({"path": self.path, "body": body})
+            self.__class__.requests.append(
+                {
+                    "path": self.path,
+                    "body": body,
+                    "headers": dict(self.headers),
+                }
+            )
 
         response = json.dumps(
             {"id": "message-123", "channel_id": thread_id}
@@ -135,6 +141,23 @@ class PublishCompletionTests(unittest.TestCase):
                 "roles": [],
                 "replied_user": False,
             },
+        )
+
+    def test_public_command_identifies_itself_to_the_discord_api(self):
+        completed = self.run_publish(
+            {
+                "session_id": "discord-user-agent",
+                "task_title": "Identify the webhook client",
+                "project": "Codex to Discord",
+                "result": "The request reached the fake Discord service.",
+                "validation": "The fake service recorded the request headers.",
+            }
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            RecordingDiscordHandler.requests[0]["headers"]["User-Agent"],
+            "DiscordBot (https://github.com/openai/codex, 0.1)",
         )
 
     def test_next_action_is_optional(self):

@@ -62,6 +62,7 @@ FIELD_LIMITS = {
 
 DISCORD_CONTENT_LIMIT = 2000
 DISCORD_THREAD_NAME_LIMIT = 100
+DISCORD_USER_AGENT = "DiscordBot (https://github.com/openai/codex, 0.1)"
 DISCORD_USER_ID = re.compile(r"[0-9]{17,20}\Z")
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 WHITESPACE = re.compile(r"\s+")
@@ -215,7 +216,10 @@ def _request_payload(
     return request.Request(
         _discord_endpoint(endpoint, thread_id),
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": DISCORD_USER_AGENT,
+        },
         method="POST",
     )
 
