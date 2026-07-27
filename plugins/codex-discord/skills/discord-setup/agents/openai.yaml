@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discord Setup"
+  short_description: "Connect Discord and verify notifications"
+  default_prompt: "Use $discord-setup to connect a Discord forum and verify notifications."

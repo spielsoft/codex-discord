@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -68,20 +69,27 @@ class PluginPackageTests(unittest.TestCase):
             f"/api/webhooks/123456789012345678/{WEBHOOK_TOKEN}"
         )
 
-    def environment(self):
+    def environment(self, *, configured=True):
         environment = os.environ.copy()
         environment.update(
             {
                 "PLUGIN_ROOT": str(self.install_root),
                 "PLUGIN_DATA": str(self.plugin_data),
-                "CODEX_DISCORD_WEBHOOK_URL": self.endpoint,
-                "CODEX_DISCORD_MENTION_USER_ID": MENTION_USER_ID,
             }
         )
+        environment.pop("CODEX_DISCORD_WEBHOOK_URL", None)
+        environment.pop("CODEX_DISCORD_MENTION_USER_ID", None)
         environment.pop("CODEX_DISCORD_STATE_FILE", None)
+        if configured:
+            environment.update(
+                {
+                    "CODEX_DISCORD_WEBHOOK_URL": self.endpoint,
+                    "CODEX_DISCORD_MENTION_USER_ID": MENTION_USER_ID,
+                }
+            )
         return environment
 
-    def run_plugin(self, *arguments, input=None):
+    def run_plugin(self, *arguments, input=None, environment=None):
         return subprocess.run(
             [
                 sys.executable,
@@ -89,7 +97,7 @@ class PluginPackageTests(unittest.TestCase):
                 *arguments,
             ],
             cwd=self.temporary_directory.name,
-            env=self.environment(),
+            env=environment or self.environment(),
             input=input,
             text=True,
             capture_output=True,
@@ -113,6 +121,93 @@ class PluginPackageTests(unittest.TestCase):
             handler = event[0]["hooks"][0]
             self.assertIn("$PLUGIN_ROOT", handler["command"])
             self.assertIn("$PLUGIN_DATA", handler["command"])
+
+    def test_listing_and_setup_skill_make_first_run_explicit(self):
+        manifest = json.loads(
+            (self.install_root / ".codex-plugin" / "plugin.json").read_text()
+        )
+        setup_skill = (
+            self.install_root / "skills" / "discord-setup" / "SKILL.md"
+        ).read_text()
+
+        self.assertIn(
+            "Connect a Discord forum webhook",
+            manifest["interface"]["longDescription"],
+        )
+        self.assertEqual(
+            manifest["interface"]["defaultPrompt"][0],
+            "Set up Codex Discord notifications.",
+        )
+        self.assertIn("scripts/codex-discord setup", setup_skill)
+        self.assertIn("Do not ask the user to paste", setup_skill)
+        self.assertIn("Codex task — <project>", setup_skill)
+
+    def test_guided_setup_stores_private_config_and_enables_hooks(self):
+        unconfigured = self.environment(configured=False)
+        completed = self.run_plugin(
+            "setup",
+            input=f"{self.endpoint}\n{MENTION_USER_ID}\n",
+            environment=unconfigured,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        result = json.loads(completed.stdout)
+        self.assertEqual(result["status"], "configured")
+        self.assertEqual(result["next_action"], "Run doctor --send-test.")
+        combined = completed.stdout + completed.stderr
+        self.assertNotIn(WEBHOOK_TOKEN, combined)
+        self.assertNotIn(MENTION_USER_ID, combined)
+        config_file = self.plugin_data / "config.json"
+        self.assertTrue(config_file.is_file())
+        self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
+
+        doctor = self.run_plugin("doctor", environment=unconfigured)
+        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+        self.assertEqual(json.loads(doctor.stdout)["status"], "ready")
+        self.assertEqual(PluginDiscordHandler.requests, [])
+
+        definition = json.loads(
+            (self.install_root / "hooks" / "hooks.json").read_text()
+        )
+        handler = definition["hooks"]["Stop"][0]["hooks"][0]
+        hook = subprocess.run(
+            handler["command"],
+            cwd=self.temporary_directory.name,
+            env=unconfigured,
+            input=json.dumps(
+                {
+                    "hook_event_name": "Stop",
+                    "session_id": "configured-session",
+                    "turn_id": "configured-turn",
+                    "cwd": "/synthetic/project",
+                    "last_assistant_message": "Private setup is active.",
+                }
+            ),
+            text=True,
+            capture_output=True,
+            check=False,
+            shell=True,
+            timeout=handler["timeout"],
+        )
+        self.assertEqual(hook.returncode, 0, hook.stderr)
+        self.assertEqual(len(PluginDiscordHandler.requests), 1)
+
+    def test_guided_setup_rejects_invalid_values_without_storing_or_echoing(self):
+        invalid_webhook = (
+            "https://example.invalid/api/webhooks/123456789012345678/"
+            f"{WEBHOOK_TOKEN}"
+        )
+        completed = self.run_plugin(
+            "setup",
+            input=f"{invalid_webhook}\nnot-a-numeric-id\n",
+            environment=self.environment(configured=False),
+        )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertFalse((self.plugin_data / "config.json").exists())
+        combined = completed.stdout + completed.stderr
+        self.assertNotIn(WEBHOOK_TOKEN, combined)
+        self.assertNotIn(invalid_webhook, combined)
 
     def test_clean_install_doctor_is_local_only_and_uses_plugin_data(self):
         completed = self.run_plugin("doctor")
@@ -221,19 +316,11 @@ class PluginPackageTests(unittest.TestCase):
         self.assertIn("Milestone", request["content"])
         self.assertEqual(request["allowed_mentions"]["users"], [])
 
-    def test_setup_and_uninstall_commands_are_non_mutating_guidance(self):
-        setup = self.run_plugin("setup")
+    def test_uninstall_command_is_non_mutating_guidance(self):
         uninstall = self.run_plugin("uninstall")
 
-        self.assertEqual(setup.returncode, 0, setup.stderr)
         self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
-        setup_result = json.loads(setup.stdout)
         uninstall_result = json.loads(uninstall.stdout)
-        self.assertEqual(setup_result["status"], "setup-required")
-        self.assertIn(
-            "CODEX_DISCORD_WEBHOOK_URL",
-            setup_result["required_environment"],
-        )
         self.assertEqual(uninstall_result["status"], "removal-guidance")
         self.assertIn(
             str(self.plugin_data / "routing.json"),

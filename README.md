@@ -182,8 +182,8 @@ concurrency or richer history makes it useful.
 
 Secrets must not be committed to the repository. For workspace testing, the
 webhook URL should come from an environment variable or the macOS Keychain.
-The final packaging should provide a deliberate setup command rather than
-asking users to edit source files.
+The packaged plugin provides a masked setup command that writes owner-only
+per-user configuration under `PLUGIN_DATA`; users never edit source files.
 
 ## Best-effort delivery contract
 
@@ -237,8 +237,8 @@ requirements, the current expectation is:
 The reusable package now lives at
 [`plugins/codex-discord`](plugins/codex-discord/README.md). It bundles the
 proven runtime, default-discovered lifecycle hooks, setup and diagnostic
-commands, and a focused explicit-milestone skill without user configuration or
-marketplace metadata.
+commands, a guided first-run skill, and a focused explicit-milestone skill
+without shipping user configuration or marketplace metadata.
 
 ## Development phases
 

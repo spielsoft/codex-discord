@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
+from getpass import getpass
 from pathlib import Path
 
 
@@ -14,6 +16,7 @@ RUNTIME_ROOT = PLUGIN_ROOT / "runtime"
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+CONFIG_FILENAME = "config.json"
 
 
 def _plugin_data() -> Path:
@@ -23,27 +26,103 @@ def _plugin_data() -> Path:
     return Path.home() / ".codex" / "codex-discord"
 
 
+def _config_file() -> Path:
+    return _plugin_data() / CONFIG_FILENAME
+
+
+def _stored_configuration() -> dict[str, str]:
+    try:
+        value = json.loads(_config_file().read_text())
+    except (OSError, TypeError, ValueError):
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: configured.strip()
+        for name, configured in value.items()
+        if name in (WEBHOOK_ENVIRONMENT, MENTION_ENVIRONMENT)
+        and isinstance(configured, str)
+        and configured.strip()
+    }
+
+
+def _apply_stored_configuration() -> None:
+    for name, value in _stored_configuration().items():
+        if not os.environ.get(name, "").strip():
+            os.environ[name] = value
+
+
 def _configure_runtime() -> None:
     sys.path.insert(0, str(RUNTIME_ROOT))
+    _apply_stored_configuration()
     os.environ.setdefault(
         STATE_ENVIRONMENT,
         str(_plugin_data() / "routing.json"),
     )
 
 
-def _print_setup() -> int:
+def _write_private_configuration(values: dict[str, str]) -> None:
+    directory = _plugin_data()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=directory,
+        prefix=".config.",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w") as stream:
+            json.dump(values, stream)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, _config_file())
+        os.chmod(_config_file(), 0o600)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def _run_setup() -> int:
+    from codex_discord.diagnostics import DISCORD_USER_ID, _webhook_is_usable
+
+    try:
+        endpoint = getpass(
+            "Discord forum webhook URL (input hidden): ",
+            stream=sys.stderr,
+        ).strip()
+        print("Discord numeric user ID: ", end="", file=sys.stderr, flush=True)
+        mention_user_id = sys.stdin.readline().strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nSetup cancelled; no configuration was written.", file=sys.stderr)
+        return 1
+
+    if not _webhook_is_usable(endpoint):
+        print(
+            "Setup failed: enter an HTTPS webhook created for a Discord forum channel.",
+            file=sys.stderr,
+        )
+        return 1
+    if DISCORD_USER_ID.fullmatch(mention_user_id) is None:
+        print(
+            "Setup failed: enter the numeric 17–20 digit Discord user ID.",
+            file=sys.stderr,
+        )
+        return 1
+
+    _write_private_configuration(
+        {
+            WEBHOOK_ENVIRONMENT: endpoint,
+            MENTION_ENVIRONMENT: mention_user_id,
+        }
+    )
     result = {
-        "status": "setup-required",
-        "required_environment": [
-            WEBHOOK_ENVIRONMENT,
-            MENTION_ENVIRONMENT,
-        ],
-        "optional_environment": [STATE_ENVIRONMENT],
+        "status": "configured",
+        "config": str(_config_file()),
         "state_default": str(_plugin_data() / "routing.json"),
-        "next_action": (
-            "Set the required values in the process that launches Codex, "
-            "then run this command with doctor."
-        ),
+        "forum_post_naming": "Codex task — <project>",
+        "next_action": "Run doctor --send-test.",
         "documentation": str(PLUGIN_ROOT / "README.md"),
     }
     json.dump(result, sys.stdout)
@@ -60,10 +139,11 @@ def _print_uninstall() -> int:
                 "then restart Codex."
             ),
             "Verify /hooks no longer lists the plugin Stop and PermissionRequest hooks.",
-            "Stop exporting the plugin configuration values.",
+            "Delete the private config file or stop exporting configuration values.",
             "Retain or remove the routing state and adjacent lock file intentionally.",
             "Delete the Discord webhook to revoke the credential when desired.",
         ],
+        "private_config": str(_config_file()),
         "retained_state": str(_plugin_data() / "routing.json"),
         "documentation": str(PLUGIN_ROOT / "README.md"),
     }
@@ -115,7 +195,7 @@ def main() -> int:
     operation = sys.argv[1]
     arguments = sys.argv[2:]
     if operation == "setup":
-        return _print_setup()
+        return _run_setup()
     if operation == "uninstall":
         return _print_uninstall()
     if operation in ("doctor", "milestone"):

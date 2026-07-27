@@ -11,13 +11,27 @@ Codex.
 - `runtime/codex_discord/`: independent Python standard-library runtime.
 - `scripts/codex-discord`: setup, doctor, milestone, hook, and removal-guidance
   command boundary.
+- `skills/discord-setup/`: guided first-run connection and verification.
 - `skills/discord-milestone/`: focused workflow for user-requested milestones.
 
 The manifest intentionally omits a `hooks` field. Codex discovers
 `hooks/hooks.json` by convention. Hook commands resolve installed code through
 `PLUGIN_ROOT` and default writable routing state to
-`PLUGIN_DATA/routing.json`. No credential or user-specific configuration is
-stored in the package.
+`PLUGIN_DATA/routing.json`. Guided setup stores per-user configuration in
+`PLUGIN_DATA/config.json`; no credential or user-specific configuration is
+shipped in the package.
+
+## What each user configures
+
+The plugin needs:
+
+- one incoming webhook created for the destination Discord **forum channel**;
+- one numeric Discord user ID for deliberate attention mentions.
+
+It does not need the name or ID of a pre-existing forum post. On the first
+event for a Codex session, the webhook creates `Codex task — <project>`.
+The plugin stores Discord's returned thread ID and appends later events from
+that Codex session to the same post.
 
 ## Supported surfaces and runtime
 
@@ -63,9 +77,39 @@ exercise the same manifest, hooks, commands, and bundled runtime without
 invoking the user-config-mutating plugin CLI. A real marketplace add/install
 remains the explicit opt-in procedure above.
 
-## Configure and diagnose
+## First-run setup
 
-Supply configuration to the process that launches Codex:
+After installation, select the starter prompt **Set up Codex Discord
+notifications**, or invoke `$discord-setup`. The guided workflow explains how
+to create the forum webhook and copy a numeric Discord user ID.
+
+Run the setup command from a local terminal so the webhook never enters a chat
+or Codex transcript:
+
+```sh
+/usr/bin/python3 scripts/codex-discord setup
+```
+
+Webhook input is hidden. The command validates both values locally and writes
+`PLUGIN_DATA/config.json` with owner-only permissions. Then verify the local
+configuration and deliberately send one test:
+
+```sh
+/usr/bin/python3 scripts/codex-discord doctor
+/usr/bin/python3 scripts/codex-discord doctor --send-test
+```
+
+The first command is local-only. The second creates a diagnostic forum post.
+Start a new Codex task, inspect and trust the two packaged hooks, and complete
+one turn to verify automatic delivery.
+
+Each user has independent `PLUGIN_DATA`. A workspace can direct everyone to
+one forum webhook while giving each person their own numeric mention ID.
+
+## Managed configuration
+
+Administrators can provide environment variables instead of interactive setup.
+Environment values override the per-user private configuration:
 
 | Variable | Purpose | Required |
 | --- | --- | --- |
@@ -73,26 +117,12 @@ Supply configuration to the process that launches Codex:
 | `CODEX_DISCORD_MENTION_USER_ID` | Numeric 17–20 digit attention target | yes |
 | `CODEX_DISCORD_STATE_FILE` | Override for routing state | no |
 
-The webhook is a credential. Keep it in local secret storage and never in
-plugin files, shell history, screenshots, issue reports, or command output.
+The webhook is a credential. Keep it out of shell history, screenshots, issue
+reports, prompts, and repository files.
 Plugin hooks default state to Codex's writable `PLUGIN_DATA` directory. For
 manual shell diagnostics, set `CODEX_DISCORD_STATE_FILE` to the same explicit
 absolute path used by the Codex launch environment; otherwise the standalone
 command falls back to `~/.codex/codex-discord/routing.json`.
-
-From the installed plugin directory, run:
-
-```sh
-/usr/bin/python3 scripts/codex-discord setup
-/usr/bin/python3 scripts/codex-discord doctor
-```
-
-`doctor` is local-only by default. It validates configuration and state without
-contacting Discord or printing credentials. An explicit test delivery is:
-
-```sh
-/usr/bin/python3 scripts/codex-discord doctor --send-test
-```
 
 ## Opt-in installed-plugin smoke
 
@@ -141,8 +171,8 @@ Removing the plugin must preserve unrelated hooks:
 1. Run `codex plugin remove codex-discord@your-marketplace-name`, restart
    Codex, and verify `/hooks` no longer lists the plugin's two handlers.
    Disabling all hooks globally is broader and is not required.
-2. Stop exporting the three configuration variables. Removing an environment
-   value does not revoke a stored credential.
+2. Delete `PLUGIN_DATA/config.json` and stop exporting the three configuration
+   variables. Removing a local value does not revoke the Discord webhook.
 3. Retain `PLUGIN_DATA/routing.json` and its adjacent lock file for thread
    continuity, or remove both only after the hooks are disabled. Removing
    state does not delete Discord posts.
