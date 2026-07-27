@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Mapping, Optional, Union
 from urllib import error, parse, request
 
-from .state import RoutingState, RoutingStateTimeout
+from .state import MAX_DELIVERED_EVENTS, RoutingState, RoutingStateTimeout
 
 
 @dataclass(frozen=True)
@@ -129,6 +129,18 @@ def _status(notification: Mapping[str, object]) -> str:
         choices = ", ".join(STATUS_PRESENTATION)
         raise ValueError(f"status must be one of: {choices}")
     return value
+
+
+def _event_id(notification: Mapping[str, object]) -> Optional[str]:
+    value = notification.get("event_id")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("event_id must be a non-empty string when provided")
+    normalized = value.strip()
+    if len(normalized) > 512:
+        raise ValueError("event_id must not exceed 512 characters")
+    return normalized
 
 
 def _mention_user_id(value: Optional[str], attention: bool) -> Optional[str]:
@@ -318,6 +330,7 @@ def publish_notification(
     policy = delivery_policy or DeliveryPolicy()
     policy.validate()
     status = _status(notification)
+    event_id = _event_id(notification)
     values = {field: _required_text(notification, field) for field in REQUIRED_FIELDS}
     raw_next_action = notification.get("next_action")
     if raw_next_action is not None and not isinstance(raw_next_action, str):
@@ -362,9 +375,24 @@ def publish_notification(
     attempts = 0
     route_recovered = False
     try:
-        with RoutingState(state_file).locked_routes(
+        with RoutingState(state_file).locked_state(
             timeout_seconds=policy.delivery_timeout_seconds
-        ) as routes:
+        ) as state:
+            routes = state["routes"]
+            delivered_events = state["delivered_events"]
+            if not isinstance(routes, dict) or not isinstance(
+                delivered_events, list
+            ):
+                raise ValueError("routing state is invalid")
+            if event_id is not None and event_id in delivered_events:
+                duplicate = {
+                    "session_id": session_id,
+                    "status": "duplicate",
+                }
+                existing_thread = routes.get(session_id)
+                if isinstance(existing_thread, str):
+                    duplicate["thread_id"] = existing_thread
+                return duplicate
             thread_id = routes.get(session_id)
             while attempts < policy.max_attempts:
                 remaining = deadline - time.monotonic()
@@ -550,6 +578,10 @@ def publish_notification(
                         )
                     thread_id = returned_thread_id
                     routes[session_id] = thread_id
+
+                if event_id is not None:
+                    delivered_events.append(event_id)
+                    del delivered_events[:-MAX_DELIVERED_EVENTS]
 
                 return _success_result(
                     session_id,

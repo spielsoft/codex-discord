@@ -12,7 +12,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 5: Prove the transport in a private Discord server
 - [x] Slice 6: Select the reliable Codex lifecycle inputs
 - [x] Slice 7: Notify automatically when a Codex turn stops
-- [ ] Slice 8: Notify automatically when Codex needs attention
+- [x] Slice 8: Notify automatically when Codex needs attention
 - [ ] Slice 9: Add setup and operational diagnostics
 - [ ] Slice 10: Package the integration as a Codex plugin
 - [ ] Slice 11: Clean the test suite and verify release readiness
@@ -323,19 +323,30 @@ thread and mention only the configured user.
 
 ### Acceptance criteria
 
-- [ ] A supported permission or input request posts a needs-attention message
+- [x] A supported permission or input request posts a needs-attention message
       to the correct Discord task thread.
-- [ ] Supported blocked and failed outcomes use their distinct status and
+- [x] Supported blocked and failed outcomes use their distinct status and
       deliberate mention behavior.
-- [ ] Attention notifications do not approve, deny, or otherwise control
+- [x] Attention notifications do not approve, deny, or otherwise control
       Codex.
-- [ ] An explicit milestone operation can publish to the current task thread
+- [x] An explicit milestone operation can publish to the current task thread
       when enabled.
-- [ ] Routine intermediate tool activity produces no Discord messages.
-- [ ] Duplicate lifecycle delivery is handled according to a documented
+- [x] Routine intermediate tool activity produces no Discord messages.
+- [x] Duplicate lifecycle delivery is handled according to a documented
       idempotency rule.
-- [ ] Fixture tests cover each attention state, milestone opt-in, suppression,
+- [x] Fixture tests cover each attention state, milestone opt-in, suppression,
       and duplicate delivery.
+
+### Slice 8 outcome
+
+`PermissionRequest` now posts a notification-only `needs-input` event to the
+existing session route and deliberately mentions only the configured user.
+Adapter-owned normalized blocked and failed outcomes use the same safe path;
+they are not claimed as native Codex lifecycle events. Explicit milestones
+require `--enable`. A durable event digest suppresses acknowledged replays
+across processes while leaving failed deliveries retryable; the 256-entry
+retention bound and acknowledgement-before-state-write crash window are
+documented.
 
 ### Blocked by
 

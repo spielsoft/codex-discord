@@ -1,6 +1,18 @@
 {
-  "description": "Opt-in Codex completion notifications for this workspace.",
+  "description": "Opt-in Codex completion and attention notifications for this workspace.",
   "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && /usr/bin/python3 -m codex_discord.attention_hook",
+            "timeout": 7,
+            "statusMessage": "Sending attention request to Discord"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

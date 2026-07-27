@@ -1,0 +1,10 @@
+{
+  "session_id": "session-cli-fixture",
+  "turn_id": "turn-cli-failed-fixture",
+  "cwd": "/synthetic/workspaces/codex-to-discord",
+  "hook_event_name": "CodexDiscordAttention",
+  "status": "failed",
+  "summary": "The requested operation failed.",
+  "validation": "Codex reported a terminal failure.",
+  "next_action": "Inspect the task in Codex."
+}

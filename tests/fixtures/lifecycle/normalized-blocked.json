@@ -1,0 +1,10 @@
+{
+  "session_id": "session-cli-fixture",
+  "turn_id": "turn-cli-blocked-fixture",
+  "cwd": "/synthetic/workspaces/codex-to-discord",
+  "hook_event_name": "CodexDiscordAttention",
+  "status": "blocked",
+  "summary": "Work cannot continue until the user supplies a required decision.",
+  "validation": "The blocking condition was confirmed.",
+  "next_action": "Review the task in Codex."
+}

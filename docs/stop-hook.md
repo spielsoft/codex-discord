@@ -40,8 +40,9 @@ failure therefore cannot replace the Codex turn result.
 
 ## Opt-in workspace use
 
-`.codex/hooks.example.json` is deliberately not active. To run the remaining
-live Slice 7 check:
+`.codex/hooks.example.json` is deliberately not active. It also contains the
+Slice 8 `PermissionRequest` handler documented in
+[attention-hook.md](attention-hook.md). To run a completion smoke check:
 
 1. Make `CODEX_DISCORD_WEBHOOK_URL` available to the Codex CLI process through
    untracked local environment configuration.

@@ -95,6 +95,13 @@ Codex lifecycle hooks are the preferred automatic trigger:
 - Additional events only if testing demonstrates that they provide useful
   signal without excessive noise.
 
+The workspace prototype now supports `Stop` and `PermissionRequest` through
+notification-only hooks. Explicit normalized `blocked` and `failed` outcomes
+use the same attention adapter; routine tool events are not registered.
+Milestones use the separate `milestone --enable` operation. See
+[docs/attention-hook.md](docs/attention-hook.md) for the public contracts and
+durable duplicate-delivery rule.
+
 The adapter should not depend heavily on parsing Codex transcript files.
 Codex exposes a transcript path to hooks, but the transcript format is not a
 stable public interface. During the prototype, we need to validate the best
@@ -154,6 +161,10 @@ The prototype needs:
 - The Discord user ID to mention for attention states.
 - A small local state store mapping Codex session IDs to Discord thread IDs.
 - Optional notification preferences.
+
+Attention hooks additionally require the numeric Discord user ID in
+`CODEX_DISCORD_MENTION_USER_ID`. This value and the webhook remain untracked
+local configuration.
 
 The first state store can be a small JSON file. SQLite is unnecessary unless
 concurrency or richer history makes it useful.
