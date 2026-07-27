@@ -5,7 +5,7 @@ Work through these tracer-bullet slices in dependency order.
 
 ## Progress
 
-- [ ] Slice 1: Publish one completion through a fake Discord service
+- [x] Slice 1: Publish one completion through a fake Discord service
 - [ ] Slice 2: Preserve task-to-thread continuity
 - [ ] Slice 3: Deliver safe attention notifications
 - [ ] Slice 4: Keep Codex independent from Discord failures
@@ -34,17 +34,17 @@ narrow publishing interface used by later slices.
 
 ### Acceptance criteria
 
-- [ ] A command accepts a completed notification with session identity, task
+- [x] A command accepts a completed notification with session identity, task
       title, project, result, validation summary, and optional next action.
-- [ ] The command sends a Discord-compatible forum-post request containing a
+- [x] The command sends a Discord-compatible forum-post request containing a
       readable completion message.
-- [ ] The request creates a thread by name and asks Discord to return the
+- [x] The request creates a thread by name and asks Discord to return the
       created message or thread identity.
-- [ ] The returned Discord thread identity is captured for the originating
+- [x] The returned Discord thread identity is captured for the originating
       Codex session.
-- [ ] The complete behavior is tested against a local fake HTTP service using
+- [x] The complete behavior is tested against a local fake HTTP service using
       the public command or publishing interface.
-- [ ] The ordinary test suite requires neither network access nor Discord
+- [x] The ordinary test suite requires neither network access nor Discord
       credentials.
 
 ### Blocked by
