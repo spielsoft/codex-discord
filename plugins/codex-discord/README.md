@@ -103,6 +103,37 @@ harmless permission request, deny it, and confirm the attention message
 mentions only the configured user. The test is live and creates durable
 Discord content, so it remains explicitly opt-in.
 
+For a transport-only release smoke, assign a fresh
+`CODEX_DISCORD_STATE_FILE` and run `doctor --send-test` twice. The first
+delivery creates the diagnostic forum post and the second updates that same
+post. Diagnostic output is credential-free.
+
+## Remaining limitations
+
+- Delivery is best effort. There is no durable outbound queue, so an outage
+  that outlasts bounded retries can lose a notification.
+- Replay suppression is not distributed exactly-once delivery. A crash after
+  Discord accepts a message but before state replacement can duplicate it.
+- Routing state has no automatic expiry, and resetting it starts new forum
+  posts without deleting old Discord content.
+- Lifecycle evidence is version- and surface-specific. Desktop
+  `PermissionRequest` remains unobserved, and Codex upgrades require renewed
+  offline and opt-in live verification.
+- Push-notification behavior remains unknown because the validating user's
+  macOS and phone notifications were disabled. Mention rendering itself was
+  verified.
+- The package currently requires Python 3.9+, POSIX `fcntl`, and Codex plugin
+  support. Windows is unsupported.
+- A real `codex plugin add` remains a user opt-in because it mutates
+  process-wide Codex configuration.
+
+Discord-to-Codex replies and commands are deliberately absent. A future
+two-way design must authenticate the Discord actor and bind it to the intended
+Codex session, authorize every action, isolate permission decisions, reject
+replay, defend against prompt injection and hostile message content, preserve
+an audit trail, and rate-limit control traffic. Incoming Discord text must
+never become an implicit tool approval.
+
 ## Disable and remove
 
 Removing the plugin must preserve unrelated hooks:

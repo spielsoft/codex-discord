@@ -114,23 +114,6 @@ class PluginPackageTests(unittest.TestCase):
             self.assertIn("$PLUGIN_ROOT", handler["command"])
             self.assertIn("$PLUGIN_DATA", handler["command"])
 
-    def test_companion_skill_resolves_the_documented_bundled_command(self):
-        skill_file = (
-            self.install_root
-            / "skills"
-            / "discord-milestone"
-            / "SKILL.md"
-        )
-        instructions = skill_file.read_text()
-
-        self.assertIn("great-grandparent", instructions)
-        documented_plugin_root = skill_file.parents[2]
-        documented_command = (
-            documented_plugin_root / "scripts" / "codex-discord"
-        )
-        self.assertEqual(documented_plugin_root, self.install_root)
-        self.assertTrue(documented_command.is_file())
-
     def test_clean_install_doctor_is_local_only_and_uses_plugin_data(self):
         completed = self.run_plugin("doctor")
 

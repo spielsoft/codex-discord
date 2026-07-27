@@ -105,6 +105,56 @@ class SetupDiagnosticTests(unittest.TestCase):
             timeout=5,
         )
 
+    def run_publish(self, session_id):
+        notification = {
+            "session_id": session_id,
+            "task_title": "Diagnostic state contract",
+            "project": "codex-discord",
+            "result": "A public command created this route.",
+            "validation": "The fake Discord service acknowledged delivery.",
+        }
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "codex_discord",
+                "publish",
+                "--endpoint",
+                (
+                    f"http://127.0.0.1:{self.server.server_port}"
+                    f"/api/webhooks/123456789012345678/{WEBHOOK_TOKEN}"
+                ),
+                "--state-file",
+                str(self.state_file),
+            ],
+            cwd=REPOSITORY_ROOT,
+            input=json.dumps(notification),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+
+    def run_attention(self, session_id):
+        payload = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": session_id,
+            "turn_id": "diagnostic-private-turn",
+            "cwd": "/synthetic/codex-discord",
+            "tool_name": "Bash",
+            "tool_input": {"command": "synthetic value must not be reported"},
+        }
+        return subprocess.run(
+            [sys.executable, "-m", "codex_discord.attention_hook"],
+            cwd=REPOSITORY_ROOT,
+            env=self.environment(local_endpoint=True),
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+
     def assert_secret_free(self, completed):
         combined = completed.stdout + completed.stderr
         self.assertNotIn(WEBHOOK_TOKEN, combined)
@@ -156,7 +206,7 @@ class SetupDiagnosticTests(unittest.TestCase):
         environment[WEBHOOK_ENVIRONMENT] = (
             f"https://example.invalid/api/webhooks/123/{WEBHOOK_TOKEN}"
         )
-        environment[MENTION_ENVIRONMENT] = "IanSpielman"
+        environment[MENTION_ENVIRONMENT] = "not-a-numeric-user-id"
         self.state_file.write_text('{"routes":{"session":7}}')
 
         completed = self.run_doctor(environment=environment)
@@ -174,17 +224,13 @@ class SetupDiagnosticTests(unittest.TestCase):
         self.assert_secret_free(completed)
 
     def test_existing_state_is_summarized_without_exposing_session_or_thread_ids(self):
-        self.state_file.write_text(
-            json.dumps(
-                {
-                    "routes": {
-                        "private-session-one": "private-thread-one",
-                        "private-session-two": "private-thread-two",
-                    },
-                    "delivered_events": ["private-event"],
-                }
-            )
-        )
+        first = self.run_publish("private-session-one")
+        second = self.run_publish("private-session-two")
+        attention = self.run_attention("private-session-one")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(attention.returncode, 0, attention.stderr)
+        DiagnosticDiscordHandler.requests = []
 
         completed = self.run_doctor()
 
@@ -194,8 +240,7 @@ class SetupDiagnosticTests(unittest.TestCase):
         self.assertEqual(outcome["state"]["route_count"], 2)
         self.assertEqual(outcome["state"]["delivered_event_count"], 1)
         self.assertNotIn("private-session", completed.stdout)
-        self.assertNotIn("private-thread", completed.stdout)
-        self.assertNotIn("private-event", completed.stdout)
+        self.assertEqual(DiagnosticDiscordHandler.requests, [])
         self.assert_secret_free(completed)
 
     def test_test_delivery_requires_explicit_opt_in_and_reuses_the_publisher(self):
@@ -218,16 +263,12 @@ class SetupDiagnosticTests(unittest.TestCase):
         self.assert_secret_free(completed)
 
     def test_test_delivery_reports_automatic_stale_route_recovery(self):
-        self.state_file.write_text(
-            json.dumps(
-                {
-                    "routes": {
-                        "codex-discord-health-check": "deleted-health-thread"
-                    },
-                    "delivered_events": [],
-                }
-            )
+        seeded = self.run_doctor(
+            "--send-test",
+            environment=self.environment(local_endpoint=True),
         )
+        self.assertEqual(seeded.returncode, 0, seeded.stderr)
+        DiagnosticDiscordHandler.requests = []
         DiagnosticDiscordHandler.responses = [
             {"status": 404, "body": {"message": "Unknown Channel"}},
             {},

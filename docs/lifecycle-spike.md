@@ -11,6 +11,9 @@ values. Captures are private (`0600`) and ignored by Git.
 
 The temporary trusted hook configuration and surface marker were removed after
 observation, so the recorder is no longer active.
+The development-only recorder and its tests were removed during the release
+cleanup. The schema-equivalent fixtures remain because they exercise the
+shipped hook interfaces.
 
 ## Evidence and decision
 

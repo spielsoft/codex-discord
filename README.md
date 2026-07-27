@@ -297,6 +297,14 @@ The workspace prototype is successful when:
 8. The core formatting, routing, sanitization, and retry behavior can be tested
    without contacting Discord.
 
+## Release readiness
+
+The one-way prototype and reusable plugin are release-ready within the stated
+macOS/POSIX scope. The durable offline checks, clean-copy diagnostic contract,
+opt-in live smoke procedure, remaining limitations, and deferred two-way
+security work are recorded in
+[Release readiness](docs/release-readiness.md).
+
 ## Open questions
 
 - What should supply the initial forum-post title when a Codex task has no

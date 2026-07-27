@@ -15,7 +15,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 8: Notify automatically when Codex needs attention
 - [x] Slice 9: Add setup and operational diagnostics
 - [x] Slice 10: Package the integration as a Codex plugin
-- [ ] Slice 11: Clean the test suite and verify release readiness
+- [x] Slice 11: Clean the test suite and verify release readiness
 
 ## Slice 1: Publish one completion through a fake Discord service
 
@@ -470,20 +470,31 @@ declare the one-way integration ready for use.
 
 ### Acceptance criteria
 
-- [ ] The `test-cleanup` skill is installed or made active before this slice is
+- [x] The `test-cleanup` skill is installed or made active before this slice is
       implemented.
-- [ ] Tests that exist only to preserve temporary TDD structure are removed or
+- [x] Tests that exist only to preserve temporary TDD structure are removed or
       rewritten around public behavior.
-- [ ] Durable tests continue to protect formatting, mention safety, routing,
+- [x] Durable tests continue to protect formatting, mention safety, routing,
       persistence, transport contracts, retry bounds, secret redaction,
       lifecycle ingestion, diagnostics, and plugin installation.
-- [ ] The complete offline suite passes without network access or Discord
+- [x] The complete offline suite passes without network access or Discord
       credentials.
-- [ ] The repository's architecture and packaging checks pass.
-- [ ] A clean installation completes the documented diagnostic workflow.
-- [ ] The opt-in live smoke test creates and updates a forum post without
+- [x] The repository's architecture and packaging checks pass.
+- [x] A clean installation completes the documented diagnostic workflow.
+- [x] The opt-in live smoke test creates and updates a forum post without
       exposing credentials in output.
-- [ ] Remaining limitations and deferred two-way-control risks are documented.
+- [x] Remaining limitations and deferred two-way-control risks are documented.
+
+### Slice 11 outcome
+
+The project-local `test-cleanup` skill guided the release pass. Fifty-four
+public-contract tests remain; two diagnostic tests now seed state through
+public commands, while the completed lifecycle-recorder spike and a historical
+implementation sentinel were removed. The credential-unset offline suite,
+clean-copy plugin suite, package validators, architecture checks, and runtime
+parity checks pass. The prior opt-in live observations cover both forum-post
+creation and same-session updates, including delivery through the packaged
+hook, without credentials appearing in command output or repository files.
 
 ### Blocked by
 
