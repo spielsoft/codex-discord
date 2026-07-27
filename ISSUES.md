@@ -6,7 +6,7 @@ Work through these tracer-bullet slices in dependency order.
 ## Progress
 
 - [x] Slice 1: Publish one completion through a fake Discord service
-- [ ] Slice 2: Preserve task-to-thread continuity
+- [x] Slice 2: Preserve task-to-thread continuity
 - [ ] Slice 3: Deliver safe attention notifications
 - [ ] Slice 4: Keep Codex independent from Discord failures
 - [ ] Slice 5: Prove the transport in a private Discord server
@@ -71,15 +71,15 @@ fake service.
 
 ### Acceptance criteria
 
-- [ ] The first notification for a session creates a forum post and persists
+- [x] The first notification for a session creates a forum post and persists
       its Discord thread identity.
-- [ ] A later notification for the same session targets the stored thread
+- [x] A later notification for the same session targets the stored thread
       instead of creating another post.
-- [ ] A notification for a different session creates a different forum post.
-- [ ] Routing survives process exit and a later command invocation.
-- [ ] State updates cannot leave a partially written routing store.
-- [ ] Missing or initially empty state is handled without manual repair.
-- [ ] Behavioral tests verify create, append, separate-session, and restart
+- [x] A notification for a different session creates a different forum post.
+- [x] Routing survives process exit and a later command invocation.
+- [x] State updates cannot leave a partially written routing store.
+- [x] Missing or initially empty state is handled without manual repair.
+- [x] Behavioral tests verify create, append, separate-session, and restart
       scenarios without relying on the state file's private layout.
 
 ### Blocked by

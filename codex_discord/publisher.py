@@ -1,6 +1,9 @@
 import json
-from typing import Mapping, Optional
+from pathlib import Path
+from typing import Mapping, Optional, Union
 from urllib import error, parse, request
+
+from .state import RoutingState
 
 
 class PublishError(RuntimeError):
@@ -23,12 +26,16 @@ def _required_text(notification: Mapping[str, object], field: str) -> str:
     return value.strip()
 
 
-def _forum_endpoint(endpoint: str) -> str:
+def _discord_endpoint(endpoint: str, thread_id: Optional[str] = None) -> str:
     parts = parse.urlsplit(endpoint)
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise ValueError("endpoint must be an HTTP or HTTPS URL")
     query = parse.parse_qsl(parts.query, keep_blank_values=True)
-    query = [(key, value) for key, value in query if key != "wait"]
+    query = [
+        (key, value) for key, value in query if key not in ("thread_id", "wait")
+    ]
+    if thread_id is not None:
+        query.append(("thread_id", thread_id))
     query.append(("wait", "true"))
     return parse.urlunsplit(
         (parts.scheme, parts.netloc, parts.path, parse.urlencode(query), parts.fragment)
@@ -55,7 +62,9 @@ def _message(
 
 
 def publish_completion(
-    notification: Mapping[str, object], endpoint: str
+    notification: Mapping[str, object],
+    endpoint: str,
+    state_file: Union[str, Path],
 ) -> Mapping[str, str]:
     if not isinstance(notification, Mapping):
         raise TypeError("notification must be a JSON object")
@@ -66,8 +75,7 @@ def publish_completion(
         raise ValueError("next_action must be a string when provided")
     next_action = raw_next_action.strip() if raw_next_action else None
 
-    payload = {
-        "thread_name": f"{values['task_title']} — {values['project']}",
+    common_payload = {
         "content": _message(
             values["task_title"],
             values["project"],
@@ -77,22 +85,40 @@ def publish_completion(
         ),
         "allowed_mentions": {"parse": []},
     }
-    http_request = request.Request(
-        _forum_endpoint(endpoint),
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
 
-    try:
-        with request.urlopen(http_request, timeout=10) as response:
-            response_body = json.load(response)
-    except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise PublishError(str(exc)) from exc
+    with RoutingState(state_file).locked_routes() as routes:
+        thread_id = routes.get(values["session_id"])
+        payload = dict(common_payload)
+        if thread_id is None:
+            payload["thread_name"] = (
+                f"{values['task_title']} — {values['project']}"
+            )
 
-    thread_id = response_body.get("channel_id")
-    if not isinstance(thread_id, str) or not thread_id:
-        raise PublishError("Discord response did not include a thread identity")
+        http_request = request.Request(
+            _discord_endpoint(endpoint, thread_id),
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with request.urlopen(http_request, timeout=10) as response:
+                response_body = json.load(response)
+        except (
+            error.HTTPError,
+            error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise PublishError(str(exc)) from exc
+
+        if thread_id is None:
+            thread_id = response_body.get("channel_id")
+            if not isinstance(thread_id, str) or not thread_id:
+                raise PublishError(
+                    "Discord response did not include a thread identity"
+                )
+            routes[values["session_id"]] = thread_id
 
     return {
         "session_id": values["session_id"],
