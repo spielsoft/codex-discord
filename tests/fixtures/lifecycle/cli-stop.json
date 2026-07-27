@@ -1,0 +1,11 @@
+{
+  "session_id": "session-cli-fixture",
+  "turn_id": "turn-cli-stop-fixture",
+  "transcript_path": "/synthetic/codex/cli-transcript.jsonl",
+  "cwd": "/synthetic/workspaces/codex-to-discord",
+  "hook_event_name": "Stop",
+  "model": "gpt-fixture",
+  "permission_mode": "default",
+  "last_assistant_message": "Lifecycle spike CLI complete.",
+  "stop_hook_active": false
+}

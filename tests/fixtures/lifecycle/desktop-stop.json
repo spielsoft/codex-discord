@@ -1,0 +1,11 @@
+{
+  "session_id": "session-desktop-fixture",
+  "turn_id": "turn-desktop-stop-fixture",
+  "transcript_path": "/synthetic/codex/desktop-transcript.jsonl",
+  "cwd": "/synthetic/workspaces/codex-to-discord",
+  "hook_event_name": "Stop",
+  "model": "gpt-fixture",
+  "permission_mode": "default",
+  "last_assistant_message": "Lifecycle spike desktop complete.",
+  "stop_hook_active": false
+}

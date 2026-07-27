@@ -1,0 +1,14 @@
+{
+  "session_id": "session-cli-fixture",
+  "turn_id": "turn-cli-permission-fixture",
+  "transcript_path": "/synthetic/codex/cli-transcript.jsonl",
+  "cwd": "/synthetic/workspaces/codex-to-discord",
+  "hook_event_name": "PermissionRequest",
+  "model": "gpt-fixture",
+  "permission_mode": "default",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "touch /synthetic/outside-workspace/denied-marker",
+    "description": "Create a synthetic marker outside the workspace"
+  }
+}

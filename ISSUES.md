@@ -10,7 +10,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 3: Deliver safe attention notifications
 - [x] Slice 4: Keep Codex independent from Discord failures
 - [x] Slice 5: Prove the transport in a private Discord server
-- [ ] Slice 6: Select the reliable Codex lifecycle inputs
+- [x] Slice 6: Select the reliable Codex lifecycle inputs
 - [ ] Slice 7: Notify automatically when a Codex turn stops
 - [ ] Slice 8: Notify automatically when Codex needs attention
 - [ ] Slice 9: Add setup and operational diagnostics
@@ -229,18 +229,28 @@ and representative fixtures for the implementation slices.
 
 ### Acceptance criteria
 
-- [ ] A `Stop` event is observed and recorded in sanitized form from Codex CLI.
-- [ ] A `Stop` event is observed and recorded in sanitized form from Codex
+- [x] A `Stop` event is observed and recorded in sanitized form from Codex CLI.
+- [x] A `Stop` event is observed and recorded in sanitized form from Codex
       desktop.
-- [ ] A `PermissionRequest` event is observed where supported without granting
+- [x] A `PermissionRequest` event is observed where supported without granting
       unintended authority.
-- [ ] The available session identity, turn identity, working directory, title,
+- [x] The available session identity, turn identity, working directory, title,
       summary, and permission fields are compared across surfaces.
-- [ ] Transcript parsing is either rejected or isolated as a documented
+- [x] Transcript parsing is either rejected or isolated as a documented
       best-effort fallback rather than a stable dependency.
-- [ ] One completion-summary strategy is selected for the prototype, with its
+- [x] One completion-summary strategy is selected for the prototype, with its
       limitations and fallback behavior documented.
-- [ ] Sanitized event fixtures are retained for automated lifecycle tests.
+- [x] Sanitized event fixtures are retained for automated lifecycle tests.
+
+### Slice 6 outcome
+
+On July 27, 2026, Codex CLI and desktop both emitted `Stop` with the same
+structured field set and a usable `last_assistant_message`. CLI emitted a
+`PermissionRequest` before the user denied the harmless test command. Hooks
+exposed no stable task-title field, so automatic notifications use a generic
+title unless an explicit structured notification has supplied one. Transcript
+parsing is rejected as a core dependency. Desktop `PermissionRequest` remains
+unobserved and retains an explicit-command fallback.
 
 ### Blocked by
 
