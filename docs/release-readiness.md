@@ -79,8 +79,9 @@ finish if the diagnostic route does not need to be retained.
   disabled during verification; deliberate mention rendering was verified.
 - The package requires Python 3.9+, POSIX `fcntl`, and Codex plugin support.
   Windows is not supported.
-- Repository checks use a clean package copy rather than `codex plugin add`,
-  which mutates the user's process-wide Codex configuration.
+- The repository includes a repo marketplace for installation, while automated
+  checks use a clean package copy rather than mutating the user's process-wide
+  Codex plugin configuration.
 
 ## Deferred two-way control
 

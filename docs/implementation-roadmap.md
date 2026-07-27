@@ -1,6 +1,7 @@
-# Codex to Discord Implementation Roadmap
+# Codex-to-Discord implementation roadmap
 
-Treat [ISSUES_PRD.md](ISSUES_PRD.md) as the product and architecture source.
+Treat [product-requirements.md](product-requirements.md) as the product and
+architecture source.
 Work through these tracer-bullet slices in dependency order.
 
 ## Progress

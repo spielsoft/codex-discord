@@ -53,20 +53,28 @@ contract and an opt-in smoke when upgrading Codex.
 
 ## Install and trust
 
-This repository package intentionally contains no marketplace or user-global
-configuration. To test it as an installed plugin, place the complete
-`codex-discord` directory under a local marketplace's `plugins/` directory and
-add a marketplace entry whose source is `./plugins/codex-discord`. Then:
+The plugin package contains no user-global configuration. Its repository
+provides the standard repo marketplace at
+`.agents/plugins/marketplace.json`, pointing to `plugins/codex-discord`.
+
+From a local clone:
 
 ```sh
-codex plugin marketplace add /absolute/path/to/marketplace
-codex plugin add codex-discord@your-marketplace-name
+codex plugin marketplace add /absolute/path/to/repository
+codex plugin add codex-discord@codex-discord
 ```
 
-Those commands mutate the user's Codex plugin configuration and are therefore
-an explicit opt-in step. Start a new Codex task after installation, run
-`/hooks`, inspect the plugin source, and trust exactly the two packaged hooks.
-Changed hook definitions require review again.
+From GitHub, replace `owner/repository` with the repository shorthand:
+
+```sh
+codex plugin marketplace add owner/repository
+codex plugin add codex-discord@codex-discord
+```
+
+These commands mutate the user's Codex plugin configuration and are therefore
+explicit opt-in steps. Start a new Codex task after installation, run `/hooks`,
+inspect the plugin source, and trust exactly the two packaged hooks. Changed
+hook definitions require review again.
 
 The installed `codex-cli 0.146.0-alpha.3.1` exposes no `--config-dir` or
 `--config-file` option on `plugin`, `plugin marketplace add`, or `plugin add`.
@@ -168,7 +176,7 @@ never become an implicit tool approval.
 
 Removing the plugin must preserve unrelated hooks:
 
-1. Run `codex plugin remove codex-discord@your-marketplace-name`, restart
+1. Run `codex plugin remove codex-discord@codex-discord`, restart
    Codex, and verify `/hooks` no longer lists the plugin's two handlers.
    Disabling all hooks globally is broader and is not required.
 2. Delete `PLUGIN_DATA/config.json` and stop exporting the three configuration

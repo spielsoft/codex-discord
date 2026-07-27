@@ -1,4 +1,4 @@
-# Codex to Discord Notification Integration
+# Codex-to-Discord product requirements
 
 ## Problem Statement
 
