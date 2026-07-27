@@ -2,7 +2,7 @@ import argparse
 import json
 import sys
 
-from .publisher import PublishError, publish_completion
+from .publisher import PublishError, publish_notification
 
 
 def main() -> int:
@@ -11,11 +11,19 @@ def main() -> int:
     publish_parser = subcommands.add_parser("publish")
     publish_parser.add_argument("--endpoint", required=True)
     publish_parser.add_argument("--state-file", required=True)
+    publish_parser.add_argument("--mention-user-id")
+    publish_parser.add_argument("--enable-milestones", action="store_true")
     args = parser.parse_args()
 
     try:
         notification = json.load(sys.stdin)
-        result = publish_completion(notification, args.endpoint, args.state_file)
+        result = publish_notification(
+            notification,
+            args.endpoint,
+            args.state_file,
+            mention_user_id=args.mention_user_id,
+            milestones_enabled=args.enable_milestones,
+        )
     except (PublishError, json.JSONDecodeError, TypeError, ValueError) as error:
         print(f"publish failed: {error}", file=sys.stderr)
         return 1

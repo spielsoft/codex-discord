@@ -7,7 +7,7 @@ Work through these tracer-bullet slices in dependency order.
 
 - [x] Slice 1: Publish one completion through a fake Discord service
 - [x] Slice 2: Preserve task-to-thread continuity
-- [ ] Slice 3: Deliver safe attention notifications
+- [x] Slice 3: Deliver safe attention notifications
 - [ ] Slice 4: Keep Codex independent from Discord failures
 - [ ] Slice 5: Prove the transport in a private Discord server
 - [ ] Slice 6: Select the reliable Codex lifecycle inputs
@@ -106,17 +106,17 @@ message limits.
 
 ### Acceptance criteria
 
-- [ ] Completed notifications do not mention the configured user.
-- [ ] Needs-input, blocked, and failed notifications deliberately mention the
+- [x] Completed notifications do not mention the configured user.
+- [x] Needs-input, blocked, and failed notifications deliberately mention the
       configured user.
-- [ ] Milestone notifications are rejected or suppressed unless explicitly
+- [x] Milestone notifications are rejected or suppressed unless explicitly
       enabled.
-- [ ] Arbitrary task content cannot mention users, roles, or everyone.
-- [ ] Deliberate attention mentions use a restrictive `allowed_mentions`
+- [x] Arbitrary task content cannot mention users, roles, or everyone.
+- [x] Deliberate attention mentions use a restrictive `allowed_mentions`
       policy that permits only the configured user.
-- [ ] Long titles and summaries are truncated into a readable,
+- [x] Long titles and summaries are truncated into a readable,
       Discord-compatible message.
-- [ ] Empty, malformed, Unicode, and mention-shaped inputs have durable
+- [x] Empty, malformed, Unicode, and mention-shaped inputs have durable
       behavior tests through the public publishing interface.
 
 ### Blocked by

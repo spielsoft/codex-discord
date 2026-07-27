@@ -58,7 +58,7 @@ class PublishCompletionTests(unittest.TestCase):
         self.server_thread.join()
         self.temporary_directory.cleanup()
 
-    def publish_command(self):
+    def publish_command(self, *extra_arguments):
         endpoint = f"http://127.0.0.1:{self.server.server_port}/api/webhooks/test/token"
         return [
             sys.executable,
@@ -69,13 +69,20 @@ class PublishCompletionTests(unittest.TestCase):
             endpoint,
             "--state-file",
             str(self.state_file),
+            *extra_arguments,
         ]
 
-    def run_publish(self, notification):
+    def run_publish(self, notification, *extra_arguments):
+        return self.run_publish_input(
+            json.dumps(notification),
+            *extra_arguments,
+        )
+
+    def run_publish_input(self, serialized_notification, *extra_arguments):
         return subprocess.run(
-            self.publish_command(),
+            self.publish_command(*extra_arguments),
             cwd=REPOSITORY_ROOT,
-            input=json.dumps(notification),
+            input=serialized_notification,
             text=True,
             capture_output=True,
             check=False,
@@ -120,7 +127,15 @@ class PublishCompletionTests(unittest.TestCase):
             request["body"]["content"],
         )
         self.assertIn("Next: Add persistent routing.", request["body"]["content"])
-        self.assertEqual(request["body"]["allowed_mentions"], {"parse": []})
+        self.assertEqual(
+            request["body"]["allowed_mentions"],
+            {
+                "parse": [],
+                "users": [],
+                "roles": [],
+                "replied_user": False,
+            },
+        )
 
     def test_next_action_is_optional(self):
         completed = self.run_publish(
@@ -250,6 +265,260 @@ class PublishCompletionTests(unittest.TestCase):
                 for recorded in RecordingDiscordHandler.requests
             )
         )
+
+    def test_attention_statuses_mention_only_the_configured_user(self):
+        configured_user_id = "123456789012345678"
+        cases = (
+            ("needs-input", "🟠 Needs input"),
+            ("blocked", "🔴 Blocked"),
+            ("failed", "❌ Failed"),
+        )
+
+        for status, label in cases:
+            with self.subTest(status=status):
+                completed = self.run_publish(
+                    {
+                        "session_id": f"attention-{status}",
+                        "status": status,
+                        "task_title": "Task needs attention",
+                        "project": "Safety",
+                        "result": "The user should inspect this.",
+                        "validation": "Attention behavior tested.",
+                    },
+                    "--mention-user-id",
+                    configured_user_id,
+                )
+
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                request_body = RecordingDiscordHandler.requests[-1]["body"]
+                self.assertTrue(
+                    request_body["content"].startswith(
+                        f"<@{configured_user_id}>\n{label} — "
+                    ),
+                    request_body["content"],
+                )
+                self.assertEqual(
+                    request_body["allowed_mentions"],
+                    {
+                        "parse": [],
+                        "users": [configured_user_id],
+                        "roles": [],
+                        "replied_user": False,
+                    },
+                )
+
+    def test_completed_notification_stays_quiet_when_a_user_is_configured(self):
+        configured_user_id = "123456789012345678"
+        completed = self.run_publish(
+            {
+                "session_id": "quiet-completion",
+                "status": "completed",
+                "task_title": "Quiet task",
+                "project": "Safety",
+                "result": "Finished without needing attention.",
+                "validation": "Quiet behavior tested.",
+            },
+            "--mention-user-id",
+            configured_user_id,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        request_body = RecordingDiscordHandler.requests[0]["body"]
+        self.assertNotIn(f"<@{configured_user_id}>", request_body["content"])
+        self.assertEqual(
+            request_body["allowed_mentions"],
+            {
+                "parse": [],
+                "users": [],
+                "roles": [],
+                "replied_user": False,
+            },
+        )
+
+    def test_milestones_are_suppressed_until_explicitly_enabled(self):
+        notification = {
+            "session_id": "milestone-session",
+            "status": "milestone",
+            "task_title": "Long-running task",
+            "project": "Safety",
+            "result": "Reached a meaningful checkpoint.",
+            "validation": "Intermediate checks passed.",
+        }
+
+        suppressed = self.run_publish(notification)
+
+        self.assertEqual(suppressed.returncode, 0, suppressed.stderr)
+        self.assertEqual(
+            json.loads(suppressed.stdout),
+            {
+                "session_id": "milestone-session",
+                "status": "suppressed",
+            },
+        )
+        self.assertEqual(RecordingDiscordHandler.requests, [])
+
+        published = self.run_publish(notification, "--enable-milestones")
+
+        self.assertEqual(published.returncode, 0, published.stderr)
+        self.assertIn(
+            "🔵 Milestone — Long-running task",
+            RecordingDiscordHandler.requests[0]["body"]["content"],
+        )
+        self.assertEqual(
+            RecordingDiscordHandler.requests[0]["body"]["allowed_mentions"]["users"],
+            [],
+        )
+
+    def test_task_content_cannot_create_discord_mentions(self):
+        configured_user_id = "123456789012345678"
+        hostile_text = (
+            "@everyone @here <@111111111111111111> <@!222222222222222222> "
+            "<@&333333333333333333> <#444444444444444444>"
+        )
+        completed = self.run_publish(
+            {
+                "session_id": "mention-safety",
+                "status": "blocked",
+                "task_title": hostile_text,
+                "project": hostile_text,
+                "result": hostile_text,
+                "validation": hostile_text,
+                "next_action": hostile_text,
+            },
+            "--mention-user-id",
+            configured_user_id,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        request_body = RecordingDiscordHandler.requests[0]["body"]
+        content_after_deliberate_mention = request_body["content"].split("\n", 1)[1]
+        for mention in (
+            "@everyone",
+            "@here",
+            "<@111111111111111111>",
+            "<@!222222222222222222>",
+            "<@&333333333333333333>",
+            "<#444444444444444444>",
+        ):
+            self.assertNotIn(mention, content_after_deliberate_mention)
+            self.assertNotIn(mention, request_body["thread_name"])
+        self.assertEqual(
+            request_body["allowed_mentions"]["users"],
+            [configured_user_id],
+        )
+
+    def test_long_unicode_content_is_readable_and_within_discord_limits(self):
+        long_text = "🚀e\u0301" * 2000
+        completed = self.run_publish(
+            {
+                "session_id": "unicode-limits",
+                "task_title": long_text,
+                "project": long_text,
+                "result": long_text,
+                "validation": long_text,
+                "next_action": long_text,
+            }
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        request_body = RecordingDiscordHandler.requests[0]["body"]
+        content = request_body["content"]
+        thread_name = request_body["thread_name"]
+        self.assertLessEqual(len(content.encode("utf-16-le")) // 2, 2000)
+        self.assertLessEqual(len(thread_name.encode("utf-16-le")) // 2, 100)
+        self.assertIn("Result:", content)
+        self.assertIn("Checks:", content)
+        self.assertIn("Next:", content)
+        self.assertIn("…", content)
+        self.assertTrue(thread_name.endswith("…"), thread_name)
+
+    def test_malformed_unicode_is_replaced_without_breaking_delivery(self):
+        completed = self.run_publish(
+            {
+                "session_id": "malformed-unicode",
+                "task_title": "Broken \ud800 title",
+                "project": "Safety",
+                "result": "The malformed scalar is handled.",
+                "validation": "Public command completed.",
+            }
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        request_body = RecordingDiscordHandler.requests[0]["body"]
+        self.assertIn("Broken � title", request_body["content"])
+        self.assertIn("Broken � title", request_body["thread_name"])
+
+    def test_empty_malformed_and_unknown_status_inputs_fail_without_delivery(self):
+        cases = (
+            (
+                {
+                    "session_id": "empty-title",
+                    "task_title": " \u0000\n\t ",
+                    "project": "Safety",
+                    "result": "No result",
+                    "validation": "Not delivered",
+                },
+                "task_title must be a non-empty string",
+            ),
+            (
+                {
+                    "session_id": "malformed-result",
+                    "task_title": "Malformed input",
+                    "project": "Safety",
+                    "result": ["not", "text"],
+                    "validation": "Not delivered",
+                },
+                "result must be a non-empty string",
+            ),
+            (
+                {
+                    "session_id": "unknown-status",
+                    "status": "urgent",
+                    "task_title": "Unknown status",
+                    "project": "Safety",
+                    "result": "Not delivered",
+                    "validation": "Not delivered",
+                },
+                "status must be one of",
+            ),
+        )
+
+        for notification, expected_error in cases:
+            with self.subTest(expected_error=expected_error):
+                completed = self.run_publish(notification)
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn(expected_error, completed.stderr)
+        self.assertEqual(RecordingDiscordHandler.requests, [])
+
+    def test_attention_requires_a_valid_configured_user(self):
+        notification = {
+            "session_id": "invalid-user",
+            "status": "needs-input",
+            "task_title": "Needs input",
+            "project": "Safety",
+            "result": "Waiting for the user.",
+            "validation": "Not delivered.",
+        }
+
+        missing = self.run_publish(notification)
+        malformed = self.run_publish(
+            notification,
+            "--mention-user-id",
+            "@everyone",
+        )
+
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn("mention user ID is required", missing.stderr)
+        self.assertEqual(malformed.returncode, 1)
+        self.assertIn("mention user ID must be a Discord user ID", malformed.stderr)
+        self.assertEqual(RecordingDiscordHandler.requests, [])
+
+    def test_malformed_json_fails_without_delivery(self):
+        completed = self.run_publish_input('{"session_id": "unfinished"')
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("publish failed:", completed.stderr)
+        self.assertEqual(RecordingDiscordHandler.requests, [])
 
 
 if __name__ == "__main__":
