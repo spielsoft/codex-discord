@@ -166,6 +166,17 @@ Attention hooks additionally require the numeric Discord user ID in
 `CODEX_DISCORD_MENTION_USER_ID`. This value and the webhook remain untracked
 local configuration.
 
+The intentional setup, local-only health check, opt-in test delivery,
+credential-free diagnostic codes, routing-state lifecycle, and separate
+disable/uninstall choices are documented in
+[Setup and operations](docs/setup-and-operations.md). The public local check is:
+
+```sh
+python3 -m codex_discord doctor
+```
+
+It does not contact Discord unless `--send-test` is supplied explicitly.
+
 The first state store can be a small JSON file. SQLite is unnecessary unless
 concurrency or richer history makes it useful.
 

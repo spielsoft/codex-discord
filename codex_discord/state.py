@@ -22,6 +22,19 @@ class RoutingState:
         self.path = Path(path)
         self.lock_path = self.path.with_name(f"{self.path.name}.lock")
 
+    def inspect(self) -> Dict[str, object]:
+        """Read a credential-free summary without creating or changing state."""
+
+        state = self._read_state()
+        routes = state["routes"]
+        delivered_events = state["delivered_events"]
+        assert isinstance(routes, dict)
+        assert isinstance(delivered_events, list)
+        return {
+            "route_count": len(routes),
+            "delivered_event_count": len(delivered_events),
+        }
+
     @contextmanager
     def locked_state(
         self, timeout_seconds: float = 6.0

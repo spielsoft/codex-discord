@@ -13,7 +13,7 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 6: Select the reliable Codex lifecycle inputs
 - [x] Slice 7: Notify automatically when a Codex turn stops
 - [x] Slice 8: Notify automatically when Codex needs attention
-- [ ] Slice 9: Add setup and operational diagnostics
+- [x] Slice 9: Add setup and operational diagnostics
 - [ ] Slice 10: Package the integration as a Codex plugin
 - [ ] Slice 11: Clean the test suite and verify release readiness
 
@@ -371,19 +371,29 @@ state or credentials remain when the integration is disabled or removed.
 
 ### Acceptance criteria
 
-- [ ] Setup documentation identifies the required Discord objects,
+- [x] Setup documentation identifies the required Discord objects,
       configuration values, and safe secret-storage expectations.
-- [ ] A diagnostic command distinguishes missing, malformed, and usable
+- [x] A diagnostic command distinguishes missing, malformed, and usable
       configuration without printing the webhook credential.
-- [ ] A health check can validate local configuration without sending a
+- [x] A health check can validate local configuration without sending a
       message, and can send an explicit opt-in test message when requested.
-- [ ] Diagnostics identify common authentication, permission, forum-channel,
+- [x] Diagnostics identify common authentication, permission, forum-channel,
       routing, timeout, and rate-limit failures in actionable language.
-- [ ] Users can locate, retain, or remove local routing state intentionally.
-- [ ] Disable and uninstall guidance identifies hooks, configuration, state,
+- [x] Users can locate, retain, or remove local routing state intentionally.
+- [x] Disable and uninstall guidance identifies hooks, configuration, state,
       and credentials separately.
-- [ ] Automated tests verify diagnostics and secret redaction through public
+- [x] Automated tests verify diagnostics and secret redaction through public
       commands.
+
+### Slice 9 outcome
+
+`python3 -m codex_discord doctor` performs local-only validation and reports
+credential-free JSON with documented exit codes. Network access requires the
+explicit `--send-test` flag and reuses the bounded publisher. Setup guidance
+separates hook activation, environment configuration, state retention/removal,
+credential revocation, and code uninstall. The local check validates webhook
+and mention syntax plus existing state contents; actual Discord access and
+first-write state permissions remain properties of the explicit test.
 
 ### Blocked by
 
