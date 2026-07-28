@@ -3,8 +3,13 @@
   "version": "0.2.1",
   "description": "Connect a Discord forum webhook and send one-way Codex lifecycle notifications.",
   "author": {
-    "name": "Codex Discord contributors"
+    "name": "SpielSoft",
+    "email": "spielman@spielsoft.com",
+    "url": "https://github.com/SpielSoft"
   },
+  "homepage": "https://github.com/SpielSoft/codex-discord",
+  "repository": "https://github.com/SpielSoft/codex-discord",
+  "license": "MIT",
   "keywords": [
     "codex",
     "discord",
@@ -17,7 +22,7 @@
     "displayName": "Codex Discord",
     "shortDescription": "Connect Discord and send Codex task updates.",
     "longDescription": "Connect a Discord forum webhook with guided setup, then create one post per Codex task and append completion or attention updates automatically.",
-    "developerName": "Codex Discord contributors",
+    "developerName": "SpielSoft",
     "category": "Communication",
     "capabilities": [
       "Lifecycle hooks",
@@ -29,6 +34,7 @@
       "Check my Codex Discord connection.",
       "Send a test notification to Discord."
     ],
-    "brandColor": "#5865F2"
+    "brandColor": "#5865F2",
+    "websiteURL": "https://github.com/SpielSoft/codex-discord"
   }
 }

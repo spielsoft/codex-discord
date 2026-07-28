@@ -39,7 +39,10 @@ class RepositoryDistributionTests(unittest.TestCase):
         readme = (REPOSITORY_ROOT / "README.md").read_text()
 
         self.assertLess(readme.index("## Install"), readme.index("## Development"))
-        self.assertIn("codex plugin marketplace add owner/repository", readme)
+        self.assertIn(
+            "codex plugin marketplace add SpielSoft/codex-discord",
+            readme,
+        )
         self.assertIn("codex plugin add codex-discord@codex-discord", readme)
         self.assertIn("Set up Codex Discord notifications", readme)
         self.assertIn("does not require a pre-existing forum post", readme)

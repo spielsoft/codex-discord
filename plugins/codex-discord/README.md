@@ -64,10 +64,10 @@ codex plugin marketplace add /absolute/path/to/repository
 codex plugin add codex-discord@codex-discord
 ```
 
-From GitHub, replace `owner/repository` with the repository shorthand:
+From GitHub:
 
 ```sh
-codex plugin marketplace add owner/repository
+codex plugin marketplace add SpielSoft/codex-discord
 codex plugin add codex-discord@codex-discord
 ```
 

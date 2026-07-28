@@ -8,6 +8,7 @@ All notable changes to Codex Discord are documented here.
 - Added install-first public documentation, GitHub CI, contribution guidance,
   and a security policy.
 - Moved completed planning documents under `docs/`.
+- Finalized the SpielSoft GitHub metadata and MIT license for public release.
 
 ## 0.2.0
 

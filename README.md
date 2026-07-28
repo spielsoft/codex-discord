@@ -16,18 +16,17 @@ Requirements:
 - a private Discord server with a forum channel and incoming webhook;
 - the numeric Discord user ID that should receive attention mentions.
 
-To install from a published GitHub repository, use its `owner/repository`
-shorthand:
+To install from GitHub:
 
 ```sh
-codex plugin marketplace add owner/repository
+codex plugin marketplace add SpielSoft/codex-discord
 codex plugin add codex-discord@codex-discord
 ```
 
 To install from a local clone:
 
 ```sh
-git clone <repository-url> codex-discord
+git clone https://github.com/SpielSoft/codex-discord.git
 cd codex-discord
 codex plugin marketplace add .
 codex plugin add codex-discord@codex-discord
@@ -126,6 +125,11 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and
 ## Distribution status
 
 The GitHub/repo-marketplace layout is ready for local, CLI, and team
-distribution. Public universal-directory submission still requires the future
-GitHub repository URL, publisher contact and legal URLs, and a license selected
-by the repository owner.
+distribution. Repository metadata identifies SpielSoft as the publisher and
+the project is licensed under MIT. Public universal-directory submission is a
+separate process that still requires final listing assets and hosted support,
+privacy-policy, and terms-of-service URLs.
+
+## License
+
+Codex Discord is available under the [MIT License](LICENSE).
