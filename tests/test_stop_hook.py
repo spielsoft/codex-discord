@@ -16,6 +16,7 @@ FIXTURE_DIRECTORY = REPOSITORY_ROOT / "tests" / "fixtures" / "lifecycle"
 HOOK_COMMAND = [sys.executable, "-m", "codex_discord.stop_hook"]
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 
 
 class StopHookDiscordHandler(BaseHTTPRequestHandler):
@@ -93,6 +94,7 @@ class StopHookTests(unittest.TestCase):
         hook_environment = os.environ.copy()
         hook_environment[WEBHOOK_ENVIRONMENT] = self.endpoint
         hook_environment[STATE_ENVIRONMENT] = str(self.state_file)
+        hook_environment[DESTINATION_ENVIRONMENT] = "forum-channel"
         if environment:
             hook_environment.update(environment)
         serialized = payload if isinstance(payload, str) else json.dumps(payload)
@@ -205,6 +207,8 @@ class StopHookTests(unittest.TestCase):
                 self.endpoint,
                 "--state-file",
                 str(self.state_file),
+                "--destination-type",
+                "forum-channel",
             ],
             cwd=REPOSITORY_ROOT,
             input=json.dumps(

@@ -9,9 +9,9 @@ grants permissions, or controls Codex.
 Create or select all of the following:
 
 1. A private Discord server.
-2. A **forum channel** in that server. A text channel is not interchangeable:
-   the integration creates one forum post for each Codex session.
-3. An incoming webhook created for that forum channel.
+2. A **regular text channel** for ordinary alerts and briefs (recommended), or
+   a **forum channel** for routed posts.
+3. An incoming webhook created for that channel.
 4. Optional: the numeric, 17–20 digit Discord user ID that should be mentioned
    for automatic attention events. Enable Discord Developer Mode and use
    **Copy User ID**; a display name or username is not a user ID.
@@ -28,7 +28,8 @@ The hooks and `doctor` command read:
 
 | Environment variable | Purpose | Required |
 | --- | --- | --- |
-| `CODEX_DISCORD_WEBHOOK_URL` | HTTPS incoming webhook for the forum channel | Yes |
+| `CODEX_DISCORD_WEBHOOK_URL` | HTTPS incoming webhook for the selected channel | Yes |
+| `CODEX_DISCORD_DESTINATION_TYPE` | `text-channel` (default) or `forum-channel` | No |
 | `CODEX_DISCORD_MENTION_USER_ID` | Numeric user ID allowed for attention mentions | No |
 | `CODEX_DISCORD_STATE_FILE` | Absolute routing-state path | No |
 
@@ -45,14 +46,15 @@ credentials.
 
 For an installed plugin, select **Connect Discord** or invoke `$discord`.
 Codex opens a private localhost connection window. The window explains the
-Discord prerequisites, accepts the webhook in a password-style field, accepts
-an optional attention user ID, and sends one visible connection test.
+destination choices, accepts the webhook in a password-style field, accepts an
+optional attention user ID, and sends one visible connection test.
 Owner-only configuration is written only after Discord accepts the test.
 
 The launcher and installed cache path remain implementation details. The
 onboarding skill must never ask the user to run either from a terminal. A
 send-only workflow is ready when the window reports that Discord is connected
-and Codex reports the credential-free message and thread IDs.
+and Codex reports the credential-free destination type, message ID, and
+channel or thread ID.
 
 ## Local health check
 
@@ -79,11 +81,12 @@ Only the following opt-in form sends a quiet completed notification:
 python3 -m codex_discord doctor --send-test
 ```
 
-The test uses the normal bounded publisher and a stable health-check route, so
-later tests append to the same diagnostic forum post. It does not mention the
-configured user. The command identifies authentication, permission,
-forum-channel, missing-webhook, stale-routing, timeout, network, and rate-limit
-outcomes with a safe action. Local loopback webhook-shaped URLs are accepted
+The test uses the normal bounded publisher. Text-channel tests create ordinary
+messages; forum-channel tests use a stable route so later tests append to the
+same diagnostic post. It does not mention the configured user. The command
+identifies authentication, permission, forum configuration, missing-webhook,
+stale-routing, timeout, network, and rate-limit outcomes with a safe action.
+Local loopback webhook-shaped URLs are accepted
 for offline fake-service testing; non-loopback HTTP URLs and non-Discord
 internet hosts are rejected.
 
@@ -96,10 +99,9 @@ event contracts.
 
 ## Routing state
 
-The state file contains the Codex-session-to-Discord-thread routes and at most
-256 acknowledged lifecycle event digests. Routes have no automatic expiry in
-this prototype. The health check reports only the state path and aggregate
-counts.
+The state file contains forum route-to-thread mappings and at most 256
+acknowledged event identities. Text-channel delivery uses the event ledger but
+does not create thread routes. Routes have no automatic expiry.
 
 - **Locate:** run `doctor` and read `state.path`.
 - **Retain:** back up or leave the file in place to preserve same-task thread
@@ -120,7 +122,7 @@ These are separate operations:
    restart Codex. If the file was copied solely for this integration, it can
    instead be removed. Preserve any unrelated project hooks. Verify `/hooks`
    no longer lists these two commands.
-2. **Remove configuration:** stop exporting the three environment variables
+2. **Remove configuration:** stop exporting the four environment variables
    from the Codex launch environment. This does not delete a credential from a
    secret manager.
 3. **Retain or remove state:** keep the reported state and lock files for future
@@ -133,14 +135,14 @@ These are separate operations:
    the package-specific trust, state-retention, and removal guidance in
    [`plugins/codex-discord/README.md`](../plugins/codex-discord/README.md).
 
-The Discord forum posts remain in Discord until removed there.
+Messages and forum posts remain in Discord until removed there.
 
 ## Diagnostic reference
 
 | Code | Meaning | First action |
 | --- | --- | --- |
 | `authentication-failed` | Discord rejected the webhook credential | Recreate the webhook and update local secret storage |
-| `permission-denied` | The webhook cannot access or create in the destination | Verify forum-channel access and webhook permissions |
+| `permission-denied` | The webhook cannot access or create in the destination | Verify channel access and webhook permissions |
 | `forum-configuration` | Discord rejected the forum-post request | Confirm the webhook belongs to a forum channel |
 | `webhook-not-found` | The configured webhook no longer exists | Verify or recreate the webhook |
 | `route-recovered` | A stale stored thread was replaced successfully | No action is required |

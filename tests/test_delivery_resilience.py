@@ -103,6 +103,8 @@ class DeliveryResilienceTests(unittest.TestCase):
             endpoint,
             "--state-file",
             str(self.state_file),
+            "--destination-type",
+            "forum-channel",
             *extra_arguments,
         ]
         return subprocess.run(
@@ -138,6 +140,8 @@ class DeliveryResilienceTests(unittest.TestCase):
                 "session_id": "resilience-session",
                 "status": "published",
                 "thread_id": "thread-2",
+                "message_id": "message-123",
+                "destination_type": "forum-channel",
                 "attempts": 2,
             },
         )
@@ -234,6 +238,8 @@ class DeliveryResilienceTests(unittest.TestCase):
                 "session_id": "stale-session",
                 "status": "published",
                 "thread_id": "thread-3",
+                "message_id": "message-123",
+                "destination_type": "forum-channel",
                 "attempts": 2,
                 "route_recovered": True,
             },

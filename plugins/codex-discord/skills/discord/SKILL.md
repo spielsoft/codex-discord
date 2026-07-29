@@ -1,6 +1,6 @@
 ---
 name: discord
-description: Connect the Codex Discord plugin, check its configured Discord forum destination, and route supported Discord requests to the correct workflow. Use when the user asks to connect or configure Discord, verify readiness, troubleshoot the connection, understand supported Discord actions, or generally work with Discord without naming a more specific skill.
+description: Connect the Codex Discord plugin, select a regular text channel or forum channel, check readiness, and route supported Discord requests to the correct workflow. Use when the user asks to connect or configure Discord, verify readiness, troubleshoot the connection, understand supported Discord actions, or generally work with Discord without naming a more specific skill.
 ---
 
 # Discord
@@ -20,7 +20,9 @@ Use this skill as the router for Discord work.
 
 ## Connect
 
-The MVP connects one Discord **forum channel** as its default destination.
+The MVP connects one Discord destination. A regular **text channel** is the
+recommended default for alerts and daily briefs; a **forum channel** is
+available when routed forum posts are desired.
 
 1. Resolve this `SKILL.md` path and treat its great-grandparent directory as
    the plugin root.
@@ -30,12 +32,13 @@ The MVP connects one Discord **forum channel** as its default destination.
    user's browser. If it does not open automatically, open that URL with an
    available browser tool or give the user the clickable localhost link.
 4. Tell the user only that the Discord connection window is ready. The window
-   itself guides them through selecting a private forum channel, creating its
-   webhook, optionally supplying an attention user ID, and testing the
-   connection.
+   itself lets them choose text-channel or forum-channel delivery, guides them
+   through creating that channel's webhook, optionally accepts an attention
+   user ID, and tests the connection.
 5. Wait for the launcher to finish. Treat `status: connected` with
    `verification.status: sent` as ready, then report the credential-free
-   `message_id` and `thread_id`.
+   `destination_type`, `message_id`, and either `channel_id` for a text channel
+   or `thread_id` for a forum channel.
 
 Never ask the user to paste the webhook into chat, a Codex prompt, a command
 argument, or a repository file. Never read, repeat, log, or transmit the stored
@@ -72,6 +75,7 @@ that deliberately mention the user.
 ## Managed deployment
 
 Administrators may supply `CODEX_DISCORD_WEBHOOK_URL` to the Codex process.
+`CODEX_DISCORD_DESTINATION_TYPE` selects `text-channel` or `forum-channel`.
 `CODEX_DISCORD_MENTION_USER_ID` is optional and enables deliberate attention
 mentions. `CODEX_DISCORD_STATE_FILE` optionally overrides routing-state
 storage. Environment values override private local configuration.

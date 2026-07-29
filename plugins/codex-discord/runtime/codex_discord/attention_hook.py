@@ -14,12 +14,13 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from .publisher import publish_notification
+from .publisher import DEFAULT_DESTINATION_TYPE, publish_notification
 
 
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 GENERIC_TASK_TITLE = "Codex task"
 PERMISSION_VALIDATION = "Codex is awaiting a permission decision."
 PERMISSION_NEXT_ACTION = "Review the request in Codex."
@@ -186,6 +187,10 @@ def main() -> int:
             endpoint,
             state_file,
             mention_user_id=mention_user_id,
+            destination_type=os.environ.get(
+                DESTINATION_ENVIRONMENT,
+                DEFAULT_DESTINATION_TYPE,
+            ),
         )
         if outcome.get("status") not in ("published", "duplicate"):
             _safe_diagnostic(

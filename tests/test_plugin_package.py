@@ -83,11 +83,13 @@ class PluginPackageTests(unittest.TestCase):
         environment.pop("CODEX_DISCORD_WEBHOOK_URL", None)
         environment.pop("CODEX_DISCORD_MENTION_USER_ID", None)
         environment.pop("CODEX_DISCORD_STATE_FILE", None)
+        environment.pop("CODEX_DISCORD_DESTINATION_TYPE", None)
         if configured:
             environment.update(
                 {
                     "CODEX_DISCORD_WEBHOOK_URL": self.endpoint,
                     "CODEX_DISCORD_MENTION_USER_ID": MENTION_USER_ID,
+                    "CODEX_DISCORD_DESTINATION_TYPE": "forum-channel",
                 }
             )
         return environment
@@ -155,6 +157,9 @@ class PluginPackageTests(unittest.TestCase):
 
         self.assertEqual(manifest["name"], "codex-discord")
         self.assertEqual(manifest["skills"], "./skills/")
+        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+        self.assertTrue((self.install_root / ".mcp.json").is_file())
+        self.assertTrue((self.install_root / "mcp" / "server.py").is_file())
         self.assertNotIn("hooks", manifest)
         self.assertEqual(set(hooks["hooks"]), {"Stop", "PermissionRequest"})
         for event in hooks["hooks"].values():
@@ -171,7 +176,7 @@ class PluginPackageTests(unittest.TestCase):
         ).read_text()
 
         self.assertIn(
-            "Connect a Discord forum destination",
+            "Connect a Discord text or forum channel",
             manifest["interface"]["longDescription"],
         )
         self.assertEqual(
@@ -192,6 +197,9 @@ class PluginPackageTests(unittest.TestCase):
         self.assertIn("Connect Discord", setup_page)
         self.assertIn('type="password"', setup_page)
         self.assertIn("Connect and test", setup_page)
+        self.assertIn('value="text-channel" checked', setup_page)
+        self.assertIn('value="forum-channel"', setup_page)
+        self.assertIn("Recommended", setup_page)
         self.assertIn("formnovalidate", setup_page)
         self.assertNotIn(str(self.install_root), setup_page)
 
@@ -212,6 +220,16 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(result["attention_mentions"], "configured")
         self.assertEqual(result["verification"]["status"], "sent")
         self.assertEqual(result["verification"]["message_id"], "plugin-message")
+        self.assertEqual(result["destination"], "text-channel")
+        self.assertEqual(
+            result["verification"]["destination_type"],
+            "text-channel",
+        )
+        self.assertEqual(
+            result["verification"]["channel_id"],
+            "plugin-thread",
+        )
+        self.assertNotIn("thread_id", result["verification"])
         self.assertEqual(
             result["next_action"],
             "Ask Codex to send a message to Discord.",
@@ -233,6 +251,10 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(
             PluginDiscordHandler.requests[0]["body"]["content"],
             "Codex Discord is connected and ready.",
+        )
+        self.assertNotIn(
+            "thread_name",
+            PluginDiscordHandler.requests[0]["body"],
         )
 
         definition = json.loads(
@@ -261,6 +283,39 @@ class PluginPackageTests(unittest.TestCase):
         )
         self.assertEqual(hook.returncode, 0, hook.stderr)
         self.assertEqual(len(PluginDiscordHandler.requests), 1)
+        self.assertNotIn(
+            "thread_name",
+            PluginDiscordHandler.requests[0]["body"],
+        )
+
+    def test_browser_onboarding_can_select_forum_delivery(self):
+        process, onboarding_url = self.start_onboarding()
+        with self.submit_onboarding(
+            onboarding_url,
+            {
+                "webhook": self.endpoint,
+                "mention_user_id": "",
+                "destination_type": "forum-channel",
+            },
+        ):
+            pass
+        returncode, result, stderr = self.finish_onboarding(process)
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertEqual(result["destination"], "forum-channel")
+        self.assertEqual(
+            result["verification"]["thread_id"],
+            "plugin-thread",
+        )
+        self.assertEqual(
+            PluginDiscordHandler.requests[0]["body"]["thread_name"],
+            "Codex Discord",
+        )
+        stored = json.loads((self.plugin_data / "config.json").read_text())
+        self.assertEqual(
+            stored["CODEX_DISCORD_DESTINATION_TYPE"],
+            "forum-channel",
+        )
 
     def test_browser_onboarding_rejects_invalid_values_without_storing_or_echoing(self):
         invalid_webhook = (
@@ -306,6 +361,10 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(result["verification"]["status"], "sent")
         stored = json.loads((self.plugin_data / "config.json").read_text())
         self.assertNotIn("CODEX_DISCORD_MENTION_USER_ID", stored)
+        self.assertEqual(
+            stored["CODEX_DISCORD_DESTINATION_TYPE"],
+            "text-channel",
+        )
 
         doctor = self.run_plugin(
             "doctor",
@@ -342,8 +401,8 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(result["status"], "cancelled")
         self.assertNotIn(WEBHOOK_TOKEN, json.dumps(result) + stderr)
 
-    def test_superseded_terminal_connection_commands_are_not_exposed(self):
-        for command in ("setup", "connect"):
+    def test_superseded_terminal_interfaces_are_not_exposed(self):
+        for command in ("setup", "connect", "send"):
             completed = self.run_plugin(command, input="{}\n")
 
             self.assertEqual(completed.returncode, 1)
@@ -451,38 +510,6 @@ class PluginPackageTests(unittest.TestCase):
                 / "SKILL.md"
             ).exists()
         )
-
-    def test_outgoing_message_command_uses_the_configured_destination(self):
-        completed = self.run_plugin(
-            "send",
-            input=json.dumps(
-                {
-                    "message": "One configured-destination message.",
-                    "thread_name": "Outgoing messages",
-                    "route_key": "plugin-send-contract",
-                    "idempotency_key": "plugin-send-contract:first",
-                }
-            ),
-        )
-
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(
-            json.loads(completed.stdout),
-            {
-                "route_key": "plugin-send-contract",
-                "status": "sent",
-                "thread_id": "plugin-thread",
-                "message_id": "plugin-message",
-            },
-        )
-        self.assertEqual(len(PluginDiscordHandler.requests), 1)
-        request = PluginDiscordHandler.requests[0]["body"]
-        self.assertEqual(
-            request["content"],
-            "One configured-destination message.",
-        )
-        self.assertEqual(request["thread_name"], "Outgoing messages")
-        self.assertEqual(request["allowed_mentions"]["users"], [])
 
     def test_uninstall_command_is_non_mutating_guidance(self):
         uninstall = self.run_plugin("uninstall")

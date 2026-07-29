@@ -75,6 +75,8 @@ class PublishCompletionTests(unittest.TestCase):
             endpoint,
             "--state-file",
             str(self.state_file),
+            "--destination-type",
+            "forum-channel",
             *extra_arguments,
         ]
 
@@ -112,6 +114,8 @@ class PublishCompletionTests(unittest.TestCase):
                 "session_id": "session-abc",
                 "status": "published",
                 "thread_id": "thread-1",
+                "message_id": "message-123",
+                "destination_type": "forum-channel",
             },
         )
         self.assertEqual(len(RecordingDiscordHandler.requests), 1)

@@ -1,7 +1,7 @@
 {
   "name": "codex-discord",
-  "version": "0.3.0",
-  "description": "Send messages and one-way Codex lifecycle notifications to a Discord forum webhook.",
+  "version": "0.4.0",
+  "description": "Send messages and one-way Codex lifecycle notifications to a Discord text or forum channel.",
   "author": {
     "name": "SpielSoft",
     "email": "spielman@spielsoft.com",
@@ -13,6 +13,7 @@
   "keywords": [
     "codex",
     "discord",
+    "text-channel",
     "forum",
     "hooks",
     "notifications",
@@ -20,16 +21,16 @@
     "automation"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Codex Discord",
     "shortDescription": "Send messages and Codex updates to Discord.",
-    "longDescription": "Connect a Discord forum destination in a private guided window, send explicit free-form messages, and optionally enable automatic completion or attention updates.",
+    "longDescription": "Connect a Discord text or forum channel in a private guided window, send messages through a direct agent tool, and optionally enable automatic completion or attention updates.",
     "developerName": "SpielSoft",
     "category": "Communication",
     "capabilities": [
-      "Lifecycle hooks",
-      "Private guided connection",
-      "Outgoing messages"
+      "Interactive",
+      "Write"
     ],
     "defaultPrompt": [
       "Connect Discord.",

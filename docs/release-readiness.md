@@ -10,6 +10,7 @@ Run the complete suite with any live Discord settings removed:
 
 ```sh
 env -u CODEX_DISCORD_WEBHOOK_URL \
+  -u CODEX_DISCORD_DESTINATION_TYPE \
   -u CODEX_DISCORD_MENTION_USER_ID \
   -u CODEX_DISCORD_STATE_FILE \
   PYTHONDONTWRITEBYTECODE=1 \
@@ -60,11 +61,12 @@ export CODEX_DISCORD_STATE_FILE="/tmp/codex-discord-release-$(date +%s).json"
 /usr/bin/python3 plugins/codex-discord/scripts/codex-discord doctor --send-test
 ```
 
-Both commands print credential-free JSON. Confirm in Discord that the first
-delivery created a forum post and the second appended to that same post. The
-smoke creates durable Discord content and is never part of the offline suite.
-Remove the temporary JSON file and adjacent lock only after the two commands
-finish if the diagnostic route does not need to be retained.
+Both commands print credential-free JSON. With `text-channel`, confirm that
+each delivery created an ordinary channel message and no thread. With
+`forum-channel`, confirm that the first created a forum post and the second
+appended to it. The smoke creates durable Discord content and is never part of
+the offline suite. Remove the temporary JSON file and adjacent lock only after
+the two commands finish if the state does not need to be retained.
 
 ## Remaining limitations
 
@@ -73,8 +75,9 @@ finish if the diagnostic route does not need to be retained.
 - Durable event digests suppress acknowledged replays, but a crash between
   remote acceptance and local state replacement can duplicate a message.
 - Routing entries do not expire automatically.
-- The outgoing-message MVP uses the one forum webhook selected during connection;
-  it does not select DMs, arbitrary channels, or multiple destinations.
+- The outgoing-message MVP uses the one text or forum webhook selected during
+  connection; it does not select DMs, arbitrary per-call channels, or multiple
+  destinations.
 - The evidence covers the installed July 27, 2026 Codex CLI and paired desktop
   build. Desktop `PermissionRequest` was not observed, and future lifecycle
   schema compatibility must be retested after Codex upgrades.

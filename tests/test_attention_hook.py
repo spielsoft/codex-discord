@@ -16,6 +16,7 @@ ATTENTION_COMMAND = [sys.executable, "-m", "codex_discord.attention_hook"]
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 MENTION_USER_ID = "123456789012345678"
 
 
@@ -89,6 +90,7 @@ class AttentionHookTests(unittest.TestCase):
         environment[WEBHOOK_ENVIRONMENT] = self.endpoint
         environment[STATE_ENVIRONMENT] = str(self.state_file)
         environment[MENTION_ENVIRONMENT] = MENTION_USER_ID
+        environment[DESTINATION_ENVIRONMENT] = "forum-channel"
         return environment
 
     def run_attention(self, payload, *, environment=None):
@@ -115,6 +117,8 @@ class AttentionHookTests(unittest.TestCase):
                 self.endpoint,
                 "--state-file",
                 str(self.state_file),
+                "--destination-type",
+                "forum-channel",
             ],
             cwd=REPOSITORY_ROOT,
             input=json.dumps(notification),

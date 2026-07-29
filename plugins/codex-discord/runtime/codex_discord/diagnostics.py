@@ -8,13 +8,19 @@ from pathlib import Path
 from typing import Mapping, MutableMapping, Optional, Tuple
 from urllib import parse
 
-from .publisher import DeliveryPolicy, publish_notification
+from .publisher import (
+    DEFAULT_DESTINATION_TYPE,
+    DESTINATION_TYPES,
+    DeliveryPolicy,
+    publish_notification,
+)
 from .state import RoutingState
 
 
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 DISCORD_USER_ID = re.compile(r"[0-9]{17,20}\Z")
 DISCORD_HOSTS = frozenset(
     (
@@ -72,7 +78,13 @@ def _issue(code: str, message: str, action: str) -> Mapping[str, str]:
 
 def _inspect_configuration(
     environment: Mapping[str, str],
-) -> Tuple[MutableMapping[str, str], list, Mapping[str, object], Optional[str]]:
+) -> Tuple[
+    MutableMapping[str, str],
+    list,
+    Mapping[str, object],
+    Optional[str],
+    str,
+]:
     checks: MutableMapping[str, str] = {}
     issues = []
     endpoint = environment.get(WEBHOOK_ENVIRONMENT, "")
@@ -81,7 +93,7 @@ def _inspect_configuration(
         issues.append(
             _issue(
                 "webhook-missing",
-                "The Discord forum webhook is not configured.",
+                "The Discord webhook is not configured.",
                 f"Set {WEBHOOK_ENVIRONMENT} to the incoming webhook URL.",
             )
         )
@@ -91,14 +103,33 @@ def _inspect_configuration(
         issues.append(
             _issue(
                 "webhook-malformed",
-                "The configured webhook is not a supported Discord forum webhook URL.",
-                f"Replace {WEBHOOK_ENVIRONMENT} with an HTTPS Discord forum webhook.",
+                "The configured webhook is not a supported Discord webhook URL.",
+                f"Replace {WEBHOOK_ENVIRONMENT} with an HTTPS Discord webhook.",
             )
         )
         usable_endpoint = None
     else:
         checks["webhook"] = "usable"
         usable_endpoint = endpoint.strip()
+
+    destination_type = environment.get(
+        DESTINATION_ENVIRONMENT,
+        DEFAULT_DESTINATION_TYPE,
+    ).strip()
+    if destination_type not in DESTINATION_TYPES:
+        checks["destination_type"] = "invalid"
+        issues.append(
+            _issue(
+                "destination-type-invalid",
+                "The Discord destination type is invalid.",
+                (
+                    f"Set {DESTINATION_ENVIRONMENT} to text-channel or "
+                    "forum-channel."
+                ),
+            )
+        )
+    else:
+        checks["destination_type"] = destination_type
 
     mention_user_id = environment.get(MENTION_ENVIRONMENT, "")
     if not mention_user_id.strip():
@@ -135,7 +166,7 @@ def _inspect_configuration(
             )
         )
 
-    return checks, issues, state_summary, usable_endpoint
+    return checks, issues, state_summary, usable_endpoint, destination_type
 
 
 def _delivery_diagnostic(outcome: Mapping[str, object]) -> Mapping[str, object]:
@@ -220,7 +251,7 @@ def run_doctor(
     """Return a credential-free health result and its documented exit code."""
 
     configured_environment = environment if environment is not None else os.environ
-    checks, issues, state_summary, endpoint = _inspect_configuration(
+    checks, issues, state_summary, endpoint, destination_type = _inspect_configuration(
         configured_environment
     )
     if issues:
@@ -251,6 +282,7 @@ def run_doctor(
         )
 
     assert endpoint is not None
+    assert destination_type in DESTINATION_TYPES
     policy = delivery_policy or DeliveryPolicy()
     policy.validate()
     try:
@@ -265,6 +297,7 @@ def run_doctor(
             },
             endpoint,
             state_summary["path"],
+            destination_type=destination_type,
             delivery_policy=policy,
         )
         delivery = _delivery_diagnostic(outcome)

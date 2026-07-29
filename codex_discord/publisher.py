@@ -63,6 +63,12 @@ DISCORD_CONTENT_LIMIT = 2000
 DISCORD_THREAD_NAME_LIMIT = 100
 DEFAULT_MESSAGE_ROUTE_KEY = "discord-outgoing-message"
 DEFAULT_MESSAGE_THREAD_NAME = "Codex messages"
+DESTINATION_TEXT_CHANNEL = "text-channel"
+DESTINATION_FORUM_CHANNEL = "forum-channel"
+DESTINATION_TYPES = frozenset(
+    (DESTINATION_TEXT_CHANNEL, DESTINATION_FORUM_CHANNEL)
+)
+DEFAULT_DESTINATION_TYPE = DESTINATION_TEXT_CHANNEL
 DISCORD_USER_AGENT = "DiscordBot (https://github.com/openai/codex, 0.1)"
 DISCORD_USER_ID = re.compile(r"[0-9]{17,20}\Z")
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -184,6 +190,13 @@ def _message_thread_name(value: object) -> str:
         "thread_name",
         DISCORD_THREAD_NAME_LIMIT,
     )
+
+
+def _destination_type(value: object) -> str:
+    if not isinstance(value, str) or value not in DESTINATION_TYPES:
+        choices = ", ".join(sorted(DESTINATION_TYPES))
+        raise ValueError(f"destination type must be one of: {choices}")
+    return value
 
 
 def _mention_user_id(value: Optional[str], attention: bool) -> Optional[str]:
@@ -324,17 +337,22 @@ def _delivery_failure(
 
 def _delivery_success(
     route_key: str,
-    thread_id: str,
     message_id: str,
     attempts: int,
     route_recovered: bool,
+    *,
+    channel_id: Optional[str] = None,
+    thread_id: Optional[str] = None,
 ) -> Mapping[str, object]:
     result = {
         "route_key": route_key,
         "status": "published",
-        "thread_id": thread_id,
         "message_id": message_id,
     }
+    if channel_id is not None:
+        result["channel_id"] = channel_id
+    if thread_id is not None:
+        result["thread_id"] = thread_id
     if attempts > 1:
         result["attempts"] = attempts
     if route_recovered:
@@ -369,7 +387,13 @@ def _deliver(
     endpoint: str,
     state_file: Union[str, Path],
     policy: DeliveryPolicy,
+    destination_type: str = DEFAULT_DESTINATION_TYPE,
 ) -> Mapping[str, object]:
+    destination_type = _destination_type(destination_type)
+    forum_delivery = destination_type == DESTINATION_FORUM_CHANNEL
+    scoped_event_id = (
+        f"{destination_type}:{event_id}" if event_id is not None else None
+    )
     deadline = time.monotonic() + policy.delivery_timeout_seconds
     attempts = 0
     route_recovered = False
@@ -383,16 +407,20 @@ def _deliver(
                 delivered_events, list
             ):
                 raise ValueError("routing state is invalid")
-            if event_id is not None and event_id in delivered_events:
+            if (
+                scoped_event_id is not None
+                and scoped_event_id in delivered_events
+            ):
                 duplicate = {
                     "route_key": route_key,
                     "status": "duplicate",
                 }
-                existing_thread = routes.get(route_key)
-                if isinstance(existing_thread, str):
-                    duplicate["thread_id"] = existing_thread
+                if forum_delivery:
+                    existing_thread = routes.get(route_key)
+                    if isinstance(existing_thread, str):
+                        duplicate["thread_id"] = existing_thread
                 return duplicate
-            thread_id = routes.get(route_key)
+            thread_id = routes.get(route_key) if forum_delivery else None
             while attempts < policy.max_attempts:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -404,10 +432,16 @@ def _deliver(
                     )
 
                 payload = dict(common_payload)
-                if thread_id is None:
+                if forum_delivery and thread_id is None:
                     payload["thread_name"] = thread_name
-                replacement_attempt = route_recovered and thread_id is None
-                http_request = _request_payload(endpoint, thread_id, payload)
+                replacement_attempt = (
+                    forum_delivery and route_recovered and thread_id is None
+                )
+                http_request = _request_payload(
+                    endpoint,
+                    thread_id if forum_delivery else None,
+                    payload,
+                )
                 attempts += 1
 
                 try:
@@ -418,7 +452,8 @@ def _deliver(
                         response_body = _read_response(response)
                 except error.HTTPError as exc:
                     if (
-                        thread_id is not None
+                        forum_delivery
+                        and thread_id is not None
                         and not route_recovered
                         and exc.code in STALE_THREAD_STATUSES
                     ):
@@ -554,25 +589,25 @@ def _deliver(
                         False,
                     )
 
-                if thread_id is None:
-                    returned_thread_id = response_body.get("channel_id")
-                    if (
-                        not isinstance(returned_thread_id, str)
-                        or not returned_thread_id
-                    ):
-                        return _delivery_failure(
-                            route_key,
-                            attempts,
-                            (
-                                "Discord replacement thread response did not "
-                                "include an identity; the route remains cleared."
-                                if replacement_attempt
-                                else "Discord success response did not include a "
-                                "thread identity."
-                            ),
-                            False,
-                        )
-                    thread_id = returned_thread_id
+                returned_channel_id = response_body.get("channel_id")
+                if (
+                    not isinstance(returned_channel_id, str)
+                    or not returned_channel_id
+                ):
+                    return _delivery_failure(
+                        route_key,
+                        attempts,
+                        (
+                            "Discord replacement thread response did not "
+                            "include an identity; the route remains cleared."
+                            if replacement_attempt
+                            else "Discord success response did not include a "
+                            "channel identity."
+                        ),
+                        False,
+                    )
+                if forum_delivery and thread_id is None:
+                    thread_id = returned_channel_id
 
                 returned_message_id = response_body.get("id")
                 if (
@@ -586,18 +621,23 @@ def _deliver(
                         False,
                     )
 
-                routes[route_key] = thread_id
+                if forum_delivery:
+                    assert thread_id is not None
+                    routes[route_key] = thread_id
 
-                if event_id is not None:
-                    delivered_events.append(event_id)
+                if scoped_event_id is not None:
+                    delivered_events.append(scoped_event_id)
                     del delivered_events[:-MAX_DELIVERED_EVENTS]
 
                 return _delivery_success(
                     route_key,
-                    thread_id,
                     returned_message_id,
                     attempts,
                     route_recovered,
+                    channel_id=(
+                        None if forum_delivery else returned_channel_id
+                    ),
+                    thread_id=thread_id if forum_delivery else None,
                 )
     except RoutingStateTimeout:
         return _delivery_failure(
@@ -624,7 +664,10 @@ def _notification_outcome(
         "status": delivery["status"],
     }
     for field in (
+        "message_id",
+        "channel_id",
         "thread_id",
+        "destination_type",
         "attempts",
         "route_recovered",
         "retryable",
@@ -641,12 +684,14 @@ def publish_notification(
     state_file: Union[str, Path],
     mention_user_id: Optional[str] = None,
     delivery_policy: Optional[DeliveryPolicy] = None,
+    destination_type: str = DEFAULT_DESTINATION_TYPE,
 ) -> Mapping[str, object]:
     if not isinstance(notification, Mapping):
         raise TypeError("notification must be a JSON object")
 
     policy = delivery_policy or DeliveryPolicy()
     policy.validate()
+    destination_type = _destination_type(destination_type)
     status = _status(notification)
     event_id = _event_id(notification)
     values = {field: _required_text(notification, field) for field in REQUIRED_FIELDS}
@@ -689,8 +734,12 @@ def publish_notification(
         endpoint,
         state_file,
         policy,
+        destination_type,
     )
-    return _notification_outcome(delivery, session_id)
+    return _notification_outcome(
+        {**delivery, "destination_type": destination_type},
+        session_id,
+    )
 
 
 def publish_message(
@@ -698,14 +747,16 @@ def publish_message(
     endpoint: str,
     state_file: Union[str, Path],
     delivery_policy: Optional[DeliveryPolicy] = None,
+    destination_type: str = DEFAULT_DESTINATION_TYPE,
 ) -> Mapping[str, object]:
-    """Send one free-form message to the configured Discord forum."""
+    """Send one free-form message to the configured Discord destination."""
 
     if not isinstance(message, Mapping):
         raise TypeError("message payload must be a JSON object")
 
     policy = delivery_policy or DeliveryPolicy()
     policy.validate()
+    destination_type = _destination_type(destination_type)
     route_key = _optional_identifier(
         message,
         "route_key",
@@ -727,10 +778,12 @@ def publish_message(
         endpoint,
         state_file,
         policy,
+        destination_type,
     )
     if delivery["status"] != "published":
-        return delivery
+        return {**delivery, "destination_type": destination_type}
     return {
         **delivery,
         "status": "sent",
+        "destination_type": destination_type,
     }

@@ -15,6 +15,7 @@ RUNTIME_ROOT = PLUGIN_ROOT / "runtime"
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 CONFIG_FILENAME = "config.json"
 
 
@@ -39,7 +40,11 @@ def _stored_configuration() -> dict[str, str]:
     return {
         name: configured.strip()
         for name, configured in value.items()
-        if name in (WEBHOOK_ENVIRONMENT, MENTION_ENVIRONMENT)
+        if name in (
+            WEBHOOK_ENVIRONMENT,
+            MENTION_ENVIRONMENT,
+            DESTINATION_ENVIRONMENT,
+        )
         and isinstance(configured, str)
         and configured.strip()
     }
@@ -85,7 +90,11 @@ def _write_private_configuration(values: dict[str, str]) -> None:
 
 def _run_onboard(arguments: list[str]) -> int:
     from codex_discord.diagnostics import DISCORD_USER_ID, _webhook_is_usable
-    from codex_discord.publisher import publish_message
+    from codex_discord.publisher import (
+        DESTINATION_TYPES,
+        DESTINATION_TEXT_CHANNEL,
+        publish_message,
+    )
     from onboarding import run_onboarding
 
     open_browser = True
@@ -130,6 +139,9 @@ def _run_onboard(arguments: list[str]) -> int:
             store_configuration=_write_private_configuration,
             webhook_environment=WEBHOOK_ENVIRONMENT,
             mention_environment=MENTION_ENVIRONMENT,
+            destination_environment=DESTINATION_ENVIRONMENT,
+            destination_types=DESTINATION_TYPES,
+            default_destination_type=DESTINATION_TEXT_CHANNEL,
             announce=announce,
             open_browser=open_browser,
             timeout_seconds=timeout_seconds,
@@ -180,36 +192,15 @@ def _print_uninstall() -> int:
 def _run_public_command(operation: str, arguments: list[str]) -> int:
     from codex_discord.__main__ import main
 
-    if operation == "doctor":
-        sys.argv = ["codex-discord", "doctor", *arguments]
-        return main()
-
-    endpoint = os.environ.get(WEBHOOK_ENVIRONMENT, "").strip()
-    if not endpoint:
-        print(
-            f"{operation} failed: {WEBHOOK_ENVIRONMENT} is not configured",
-            file=sys.stderr,
-        )
-        return 1
-    state_file = os.environ[STATE_ENVIRONMENT]
-    if operation == "send":
-        sys.argv = [
-            "codex-discord",
-            operation,
-            "--endpoint",
-            endpoint,
-            "--state-file",
-            state_file,
-            *arguments,
-        ]
-        return main()
-    raise AssertionError("unsupported public operation")
+    assert operation == "doctor"
+    sys.argv = ["codex-discord", "doctor", *arguments]
+    return main()
 
 
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            "usage: codex-discord {onboard|doctor|send|stop-hook|"
+            "usage: codex-discord {onboard|doctor|stop-hook|"
             "attention-hook|uninstall}",
             file=sys.stderr,
         )
@@ -222,7 +213,7 @@ def main() -> int:
         return _run_onboard(arguments)
     if operation == "uninstall":
         return _print_uninstall()
-    if operation in ("doctor", "send"):
+    if operation == "doctor":
         return _run_public_command(operation, arguments)
     if arguments:
         print(f"{operation} does not accept arguments", file=sys.stderr)

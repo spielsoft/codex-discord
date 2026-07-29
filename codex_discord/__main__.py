@@ -3,7 +3,13 @@ import json
 import sys
 
 from .diagnostics import run_doctor
-from .publisher import DeliveryPolicy, publish_message, publish_notification
+from .publisher import (
+    DEFAULT_DESTINATION_TYPE,
+    DESTINATION_TYPES,
+    DeliveryPolicy,
+    publish_message,
+    publish_notification,
+)
 
 
 def main() -> int:
@@ -13,6 +19,11 @@ def main() -> int:
         operation_parser = subcommands.add_parser(operation)
         operation_parser.add_argument("--endpoint", required=True)
         operation_parser.add_argument("--state-file", required=True)
+        operation_parser.add_argument(
+            "--destination-type",
+            choices=sorted(DESTINATION_TYPES),
+            default=DEFAULT_DESTINATION_TYPE,
+        )
         if operation == "publish":
             operation_parser.add_argument("--mention-user-id")
         operation_parser.add_argument(
@@ -85,6 +96,7 @@ def main() -> int:
                 notification,
                 args.endpoint,
                 args.state_file,
+                destination_type=args.destination_type,
                 delivery_policy=DeliveryPolicy(
                     max_attempts=args.max_attempts,
                     request_timeout_seconds=args.request_timeout_seconds,
@@ -97,6 +109,7 @@ def main() -> int:
                 args.endpoint,
                 args.state_file,
                 mention_user_id=args.mention_user_id,
+                destination_type=args.destination_type,
                 delivery_policy=DeliveryPolicy(
                     max_attempts=args.max_attempts,
                     request_timeout_seconds=args.request_timeout_seconds,

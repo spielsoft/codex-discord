@@ -58,7 +58,7 @@ class SendMessageTests(unittest.TestCase):
         self.server_thread.join()
         self.temporary_directory.cleanup()
 
-    def run_send(self, payload):
+    def run_send(self, payload, *, destination_type="forum-channel"):
         endpoint = (
             f"http://127.0.0.1:{self.server.server_port}"
             "/api/webhooks/test/token"
@@ -73,6 +73,8 @@ class SendMessageTests(unittest.TestCase):
                 endpoint,
                 "--state-file",
                 str(self.state_file),
+                "--destination-type",
+                destination_type,
             ],
             cwd=REPOSITORY_ROOT,
             input=json.dumps(payload),
@@ -100,6 +102,7 @@ class SendMessageTests(unittest.TestCase):
                 "status": "sent",
                 "thread_id": "thread-123",
                 "message_id": "message-123",
+                "destination_type": "forum-channel",
             },
         )
         self.assertEqual(len(MessageDiscordHandler.requests), 1)
@@ -145,6 +148,47 @@ class SendMessageTests(unittest.TestCase):
             parse_qs(urlsplit(follow_up_request["path"]).query)["thread_id"],
             ["thread-123"],
         )
+
+    def test_text_channel_send_is_an_ordinary_message_without_a_thread(self):
+        payload = {
+            "message": "Calendar brief",
+            "thread_name": "Ignored for text delivery",
+            "route_key": "personal-assistant:daily-brief",
+            "idempotency_key": "daily-brief:2026-07-29",
+        }
+
+        first = self.run_send(payload, destination_type="text-channel")
+        duplicate = self.run_send(payload, destination_type="text-channel")
+        follow_up = self.run_send(
+            {
+                **payload,
+                "message": "Tomorrow's calendar brief",
+                "idempotency_key": "daily-brief:2026-07-30",
+            },
+            destination_type="text-channel",
+        )
+
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(duplicate.returncode, 0, duplicate.stderr)
+        self.assertEqual(follow_up.returncode, 0, follow_up.stderr)
+        self.assertEqual(
+            json.loads(first.stdout),
+            {
+                "route_key": "personal-assistant:daily-brief",
+                "status": "sent",
+                "message_id": "message-123",
+                "channel_id": "thread-123",
+                "destination_type": "text-channel",
+            },
+        )
+        self.assertEqual(json.loads(duplicate.stdout)["status"], "duplicate")
+        self.assertEqual(len(MessageDiscordHandler.requests), 2)
+        for sent_request in MessageDiscordHandler.requests:
+            self.assertNotIn("thread_name", sent_request["body"])
+            self.assertNotIn(
+                "thread_id",
+                parse_qs(urlsplit(sent_request["path"]).query),
+            )
 
     def test_delivery_failure_is_structured_and_exits_two(self):
         MessageDiscordHandler.response_statuses = [503, 503, 503]

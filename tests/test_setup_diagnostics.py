@@ -14,6 +14,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 MENTION_ENVIRONMENT = "CODEX_DISCORD_MENTION_USER_ID"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 WEBHOOK_TOKEN = "slice-nine-secret-webhook-token"
 MENTION_USER_ID = "123456789012345678"
 
@@ -92,6 +93,7 @@ class SetupDiagnosticTests(unittest.TestCase):
         )
         environment[MENTION_ENVIRONMENT] = MENTION_USER_ID
         environment[STATE_ENVIRONMENT] = str(self.state_file)
+        environment[DESTINATION_ENVIRONMENT] = "forum-channel"
         return environment
 
     def run_doctor(self, *arguments, environment=None):
@@ -126,6 +128,8 @@ class SetupDiagnosticTests(unittest.TestCase):
                 ),
                 "--state-file",
                 str(self.state_file),
+                "--destination-type",
+                "forum-channel",
             ],
             cwd=REPOSITORY_ROOT,
             input=json.dumps(notification),
@@ -170,6 +174,7 @@ class SetupDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             outcome["checks"],
             {
+                "destination_type": "forum-channel",
                 "mention_user_id": "usable",
                 "state": "ready",
                 "webhook": "usable",
@@ -187,6 +192,7 @@ class SetupDiagnosticTests(unittest.TestCase):
         environment = os.environ.copy()
         environment.pop(WEBHOOK_ENVIRONMENT, None)
         environment.pop(MENTION_ENVIRONMENT, None)
+        environment.pop(DESTINATION_ENVIRONMENT, None)
         environment[STATE_ENVIRONMENT] = str(self.state_file)
 
         completed = self.run_doctor(environment=environment)
@@ -198,6 +204,10 @@ class SetupDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             outcome["checks"]["mention_user_id"],
             "not-configured",
+        )
+        self.assertEqual(
+            outcome["checks"]["destination_type"],
+            "text-channel",
         )
         self.assertIn(WEBHOOK_ENVIRONMENT, outcome["issues"][0]["action"])
         self.assertNotIn(MENTION_ENVIRONMENT, json.dumps(outcome["issues"]))
@@ -242,6 +252,21 @@ class SetupDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual(DiagnosticDiscordHandler.requests, [])
         self.assert_secret_free(completed)
+
+    def test_invalid_destination_type_is_actionable(self):
+        environment = self.environment()
+        environment[DESTINATION_ENVIRONMENT] = "thread"
+
+        completed = self.run_doctor(environment=environment)
+
+        self.assertEqual(completed.returncode, 1)
+        outcome = json.loads(completed.stdout)
+        self.assertEqual(outcome["checks"]["destination_type"], "invalid")
+        self.assertIn(
+            "destination-type-invalid",
+            {issue["code"] for issue in outcome["issues"]},
+        )
+        self.assertEqual(DiagnosticDiscordHandler.requests, [])
 
     def test_existing_state_is_summarized_without_exposing_session_or_thread_ids(self):
         first = self.run_publish("private-session-one")

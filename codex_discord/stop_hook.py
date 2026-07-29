@@ -15,11 +15,12 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Mapping
 
-from .publisher import publish_notification
+from .publisher import DEFAULT_DESTINATION_TYPE, publish_notification
 
 
 WEBHOOK_ENVIRONMENT = "CODEX_DISCORD_WEBHOOK_URL"
 STATE_ENVIRONMENT = "CODEX_DISCORD_STATE_FILE"
+DESTINATION_ENVIRONMENT = "CODEX_DISCORD_DESTINATION_TYPE"
 GENERIC_TASK_TITLE = "Codex task"
 GENERIC_COMPLETION_RESULT = "Codex turn completed"
 STOP_VALIDATION = "Codex reported a completed turn."
@@ -110,6 +111,10 @@ def main() -> int:
             notification,
             endpoint,
             state_file,
+            destination_type=os.environ.get(
+                DESTINATION_ENVIRONMENT,
+                DEFAULT_DESTINATION_TYPE,
+            ),
         )
         if outcome.get("status") != "published":
             _safe_diagnostic("Discord delivery failed; the Codex turn is unchanged.")

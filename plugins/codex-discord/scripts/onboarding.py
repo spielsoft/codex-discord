@@ -77,12 +77,31 @@ def _shell(body: str, *, title: str = "Connect Discord") -> str:
     li span {{ color: var(--muted); font-size: 14px; }}
     label {{ display: block; margin: 0 0 7px; font-weight: 650; }}
     .hint {{ color: var(--muted); font-size: 13px; margin: 7px 0 18px; }}
-    input {{
+    input[type="password"], input[type="text"] {{
       width: 100%; padding: 12px 13px; border: 1px solid var(--line);
       border-radius: 9px; background: var(--card); color: var(--text);
       font: inherit;
     }}
     input:focus {{ outline: 3px solid rgba(88,101,242,.18); border-color: var(--brand); }}
+    fieldset {{ border: 0; padding: 0; margin: 0 0 22px; }}
+    legend {{ margin: 0 0 9px; font-weight: 650; }}
+    .destination-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+    .destination {{
+      position: relative; display: block; margin: 0; padding: 14px;
+      border: 1px solid var(--line); border-radius: 11px; cursor: pointer;
+      font-weight: 400;
+    }}
+    .destination:has(input:checked) {{
+      border-color: var(--brand); background: var(--soft);
+      box-shadow: 0 0 0 2px rgba(88,101,242,.12);
+    }}
+    .destination input {{ position: absolute; opacity: 0; }}
+    .destination strong {{ display: block; padding-right: 88px; }}
+    .destination span {{ display: block; color: var(--muted); font-size: 13px; }}
+    .recommended {{
+      position: absolute; right: 10px; top: 12px; color: var(--brand);
+      font-size: 11px; font-weight: 750; text-transform: uppercase;
+    }}
     details {{ margin: 4px 0 22px; }}
     summary {{ cursor: pointer; color: var(--muted); font-weight: 600; }}
     details .field {{ margin-top: 14px; }}
@@ -116,6 +135,7 @@ def _shell(body: str, *, title: str = "Connect Discord") -> str:
     @media (max-width: 560px) {{
       main {{ margin: 20px auto; }}
       .card {{ padding: 23px; }}
+      .destination-grid {{ grid-template-columns: 1fr; }}
       .actions {{ align-items: stretch; flex-direction: column; }}
       button {{ width: 100%; }}
     }}
@@ -148,8 +168,8 @@ def _setup_page(action: str, error: Optional[str] = None) -> str:
       {error_notice}
       <ol>
         <li>
-          <strong>Choose a private forum channel</strong>
-          <span>In Discord, create or select the private forum channel you want Codex to use.</span>
+          <strong>Choose a private Discord channel</strong>
+          <span>A regular text channel is best for alerts and daily briefs. Forum channels remain available for grouped discussions.</span>
         </li>
         <li>
           <strong>Create a webhook</strong>
@@ -165,6 +185,24 @@ def _setup_page(action: str, error: Optional[str] = None) -> str:
         not placed in your Codex conversation, command history, or repository.
       </div>
       <form method="post" action="{html.escape(action)}" autocomplete="off">
+        <fieldset>
+          <legend>Destination type</legend>
+          <div class="destination-grid">
+            <label class="destination">
+              <input type="radio" name="destination_type"
+                     value="text-channel" checked>
+              <strong>Text channel</strong>
+              <span>Posts each alert as an ordinary channel message.</span>
+              <span class="recommended">Recommended</span>
+            </label>
+            <label class="destination">
+              <input type="radio" name="destination_type"
+                     value="forum-channel">
+              <strong>Forum channel</strong>
+              <span>Creates a forum post and reuses it for a route.</span>
+            </label>
+          </div>
+        </fieldset>
         <label for="webhook">Discord webhook URL</label>
         <input id="webhook" name="webhook" type="password" required
                spellcheck="false" autocapitalize="none"
@@ -174,7 +212,8 @@ def _setup_page(action: str, error: Optional[str] = None) -> str:
           <summary>Optional lifecycle attention mentions</summary>
           <div class="field">
             <label for="mention_user_id">Discord user ID</label>
-            <input id="mention_user_id" name="mention_user_id" inputmode="numeric"
+            <input id="mention_user_id" name="mention_user_id" type="text"
+                   inputmode="numeric"
                    pattern="[0-9]{{17,20}}" placeholder="17–20 digit user ID">
             <p class="hint">Not needed for PersonalAssistant or other send-only workflows.</p>
           </div>
@@ -191,11 +230,21 @@ def _setup_page(action: str, error: Optional[str] = None) -> str:
     )
 
 
-def _success_page(message_id: str, thread_id: str) -> str:
+def _success_page(
+    message_id: str,
+    destination_type: str,
+    destination_id: str,
+) -> str:
+    if destination_type == "text-channel":
+        destination_description = "your selected text channel"
+        identity_label = "Channel ID"
+    else:
+        destination_description = "your selected forum channel"
+        identity_label = "Thread ID"
     return _shell(
         f"""
       <h1>Discord is connected</h1>
-      <p class="lead">Codex can now send messages to your selected forum channel.</p>
+      <p class="lead">Codex can now send messages to {destination_description}.</p>
       <div class="notice success" role="status">
         Connection verified. You should see a test message in Discord.
       </div>
@@ -203,7 +252,7 @@ def _success_page(message_id: str, thread_id: str) -> str:
       <p>No lifecycle hooks or attention user ID are required for daily brief delivery.</p>
       <div class="meta">
         Message ID: <code>{html.escape(message_id)}</code><br>
-        Thread ID: <code>{html.escape(thread_id)}</code>
+        {identity_label}: <code>{html.escape(destination_id)}</code>
       </div>
       <p class="hint">You can close this window and return to Codex.</p>
 """,
@@ -223,6 +272,9 @@ class _Session:
         store_configuration: Callable[[dict[str, str]], None],
         webhook_environment: str,
         mention_environment: str,
+        destination_environment: str,
+        destination_types: frozenset[str],
+        default_destination_type: str,
     ) -> None:
         self.nonce = nonce
         self.state_file = state_file
@@ -232,6 +284,9 @@ class _Session:
         self.store_configuration = store_configuration
         self.webhook_environment = webhook_environment
         self.mention_environment = mention_environment
+        self.destination_environment = destination_environment
+        self.destination_types = destination_types
+        self.default_destination_type = default_destination_type
         self.result: Optional[Mapping[str, object]] = None
         self.exit_code = 1
 
@@ -283,14 +338,15 @@ class _OnboardingHandler(BaseHTTPRequestHandler):
             values = parse_qs(
                 self.rfile.read(length).decode("utf-8"),
                 keep_blank_values=True,
-                max_num_fields=4,
+                max_num_fields=5,
             )
         except (UnicodeDecodeError, ValueError):
             return {}
         return {
             key: candidates[0]
             for key, candidates in values.items()
-            if candidates and key in ("webhook", "mention_user_id")
+            if candidates
+            and key in ("webhook", "mention_user_id", "destination_type")
         }
 
     def do_GET(self) -> None:
@@ -326,11 +382,24 @@ class _OnboardingHandler(BaseHTTPRequestHandler):
         values = self._form()
         endpoint = values.get("webhook", "").strip()
         mention_user_id = values.get("mention_user_id", "").strip()
+        destination_type = values.get(
+            "destination_type",
+            self.session.default_destination_type,
+        ).strip()
+        if destination_type not in self.session.destination_types:
+            self._send_html(
+                _setup_page(
+                    self.session.connect_path,
+                    "Choose a supported Discord destination type.",
+                ),
+                status=400,
+            )
+            return
         if not self.session.webhook_is_usable(endpoint):
             self._send_html(
                 _setup_page(
                     self.session.connect_path,
-                    "Enter a valid webhook created for a Discord forum channel.",
+                    "Enter a valid webhook created for the selected Discord channel.",
                 ),
                 status=400,
             )
@@ -353,6 +422,7 @@ class _OnboardingHandler(BaseHTTPRequestHandler):
             },
             endpoint,
             self.session.state_file,
+            destination_type=destination_type,
         )
         if verification.get("status") != "sent":
             diagnostic = verification.get("diagnostic")
@@ -367,27 +437,42 @@ class _OnboardingHandler(BaseHTTPRequestHandler):
             )
             return
 
-        configuration = {self.session.webhook_environment: endpoint}
+        configuration = {
+            self.session.webhook_environment: endpoint,
+            self.session.destination_environment: destination_type,
+        }
         if mention_user_id:
             configuration[self.session.mention_environment] = mention_user_id
         self.session.store_configuration(configuration)
         message_id = str(verification.get("message_id", "unknown"))
-        thread_id = str(verification.get("thread_id", "unknown"))
+        identity_field = (
+            "channel_id"
+            if destination_type == "text-channel"
+            else "thread_id"
+        )
+        destination_id = str(verification.get(identity_field, "unknown"))
         self.session.result = {
             "status": "connected",
-            "destination": "discord-forum-webhook",
+            "destination": destination_type,
             "attention_mentions": (
                 "configured" if mention_user_id else "not-configured"
             ),
             "verification": {
                 "status": "sent",
                 "message_id": message_id,
-                "thread_id": thread_id,
+                identity_field: destination_id,
+                "destination_type": destination_type,
             },
             "next_action": "Ask Codex to send a message to Discord.",
         }
         self.session.exit_code = 0
-        self._send_html(_success_page(message_id, thread_id))
+        self._send_html(
+            _success_page(
+                message_id,
+                destination_type,
+                destination_id,
+            )
+        )
 
 
 def run_onboarding(
@@ -399,6 +484,9 @@ def run_onboarding(
     store_configuration: Callable[[dict[str, str]], None],
     webhook_environment: str,
     mention_environment: str,
+    destination_environment: str,
+    destination_types: frozenset[str],
+    default_destination_type: str,
     announce: Callable[[Mapping[str, object]], None],
     open_browser: bool = True,
     timeout_seconds: float = 900.0,
@@ -417,6 +505,9 @@ def run_onboarding(
         store_configuration=store_configuration,
         webhook_environment=webhook_environment,
         mention_environment=mention_environment,
+        destination_environment=destination_environment,
+        destination_types=destination_types,
+        default_destination_type=default_destination_type,
     )
 
     # Assigning the session on the class before request dispatch avoids exposing

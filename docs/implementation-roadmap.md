@@ -18,6 +18,34 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 10: Package the integration as a Codex plugin
 - [x] Slice 11: Clean the test suite and verify release readiness
 - [x] Slice 12: Add a generic outgoing-message facade
+- [x] Slice 13: Add text-channel delivery and a native send tool
+
+## Slice 13: Add text-channel delivery and a native send tool
+
+### Type
+
+`AFK`
+
+### What to build
+
+Make ordinary text-channel messages the recommended alert path and expose the
+write as a native agent tool analogous to Slack's send-message surface.
+Retain forum delivery as an explicit destination mode, not as a legacy send
+interface.
+
+### Acceptance criteria
+
+- [x] Guided connection recommends a regular Discord text channel and can
+      explicitly select forum delivery.
+- [x] Text delivery omits `thread_name` and `thread_id`, producing one ordinary
+      channel message.
+- [x] `discord_send_message` is a callable MCP tool with a required `message`
+      and optional routing/idempotency inputs.
+- [x] Success includes `message_id`, `route_key`, and destination identity.
+- [x] Duplicate and failure outcomes are structured for recurring automation.
+- [x] The outgoing-message skill calls the native tool and has no CLI fallback.
+- [x] The superseded installed `send` command is removed.
+- [x] Offline tests cover text, forum, onboarding, and MCP contracts.
 
 ## Slice 12: Add a generic outgoing-message facade
 
@@ -34,9 +62,11 @@ and existing delivery engine, and return an automation-readable result.
 ### Acceptance criteria
 
 - [x] Explicit send intent routes through a focused outgoing-message skill.
-- [x] A public command accepts one free-form message and sends exactly one
-      Discord message per successful invocation.
-- [x] The connection-selected forum remains the default and only MVP destination.
+- [x] Version 0.3's public command accepted one free-form message and sent
+      exactly one Discord message per successful invocation. Slice 13 removes
+      that installed interface in favor of the native tool.
+- [x] Version 0.3 used the connection-selected forum as its only destination.
+      Slice 13 supersedes this with text-first destination selection.
 - [x] Stable route keys reuse an existing forum post.
 - [x] Deterministic idempotency keys suppress a second Discord request.
 - [x] Success reports Discord message and thread identities.

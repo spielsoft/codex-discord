@@ -1,8 +1,8 @@
 # Codex Discord plugin
 
 This reusable, one-way Codex plugin sends explicit messages and selected
-lifecycle events to a Discord forum webhook. It never reads Discord, approves
-requests, or controls Codex.
+lifecycle events to a Discord text-channel or forum-channel webhook. It never
+reads Discord, approves requests, or controls Codex.
 
 ## Package contents
 
@@ -10,7 +10,9 @@ requests, or controls Codex.
   discovered by Codex at the plugin default path.
 - `runtime/codex_discord/`: independent Python standard-library runtime.
 - `scripts/codex-discord` and `scripts/onboarding.py`: private connection UI,
-  doctor, outgoing-message, hook, and removal-guidance boundary.
+  doctor, hook, and removal-guidance boundary.
+- `.mcp.json` and `mcp/server.py`: native `discord_send_message` tool exposed
+  directly to agents.
 - `skills/discord/`: Slack-inspired router for connection, checks, and
   workflow selection.
 - `skills/discord-outgoing-message/`: direct free-form writes to the configured
@@ -27,14 +29,15 @@ shipped in the package.
 
 The plugin needs:
 
-- one incoming webhook created for the destination Discord **forum channel**;
+- one incoming webhook created for the destination Discord **text or forum
+  channel**;
 - optionally, one numeric Discord user ID for deliberate automatic attention
   mentions.
 
-It does not need the name or ID of a pre-existing forum post. On the first
-event for a Codex session, the webhook creates `Codex task — <project>`.
-The plugin stores Discord's returned thread ID and appends later events from
-that Codex session to the same post.
+Text-channel delivery creates ordinary messages without a thread. Forum
+delivery does not need the name or ID of a pre-existing post: the first event
+for a route creates one, and later events can append using the returned thread
+ID.
 
 ## Supported surfaces and runtime
 
@@ -92,24 +95,26 @@ remains the explicit opt-in procedure above.
 ## Connect
 
 After installation, select the starter prompt **Connect Discord**, or invoke
-`$discord`. Codex opens a private localhost connection window that explains
-how to create the forum webhook, accepts it in a password-style field, and
+`$discord`. Codex opens a private localhost connection window that recommends a
+regular text channel for alerts, also offers forum delivery, explains how to
+create that channel's webhook, accepts it in a password-style field, and
 optionally accepts a numeric user ID for automatic attention mentions.
 
 Select **Connect and test**. The plugin sends one visible
 `Codex Discord is connected and ready` message and saves
 `PLUGIN_DATA/config.json` with owner-only permissions only after Discord
-accepts the test. The window then confirms the credential-free message and
-thread IDs. Users are never asked to run an installed cache-path command or
-put the webhook in a Codex conversation.
+accepts the test. The window then confirms the destination type, message ID,
+and channel or thread ID without exposing the credential. Users are never
+asked to run an installed cache-path command or put the webhook in a Codex
+conversation.
 
 PersonalAssistant and other send-only workflows require no further onboarding.
 To use automatic lifecycle notifications too, start a new Codex task, inspect
 and trust the two packaged hooks, and complete one test turn.
 
 Each user has independent `PLUGIN_DATA`. A workspace can direct everyone to
-one forum webhook while optionally giving each person their own numeric
-attention ID.
+one webhook while optionally giving each person their own numeric attention
+ID.
 
 ## Send an explicit message
 
@@ -118,26 +123,15 @@ Ask Codex to send or post text to Discord, or invoke
 calling automation explicitly requests a write. Draft and review requests stay
 in chat.
 
-The installed command accepts one JSON object on standard input:
+Codex invokes the native `discord_send_message` tool, whose agent-facing shape
+is analogous to Slack's direct send-message tool. `message` is required;
+`route_key`, `idempotency_key`, and the forum-only `thread_name` are optional.
+The tool always uses the private destination chosen during connection and
+returns structured, credential-free status.
 
-```sh
-/usr/bin/python3 scripts/codex-discord send
-```
-
-```json
-{
-  "message": "Your complete Discord-ready message.",
-  "thread_name": "Daily Brief",
-  "route_key": "personal-assistant:daily-brief",
-  "idempotency_key": "personal-assistant:daily-brief:2026-07-29"
-}
-```
-
-Only `message` is required. The command always uses the private webhook chosen
-during connection. It returns `sent` with `message_id` and `thread_id`, `duplicate`
-for an idempotent no-op, or `delivery-failed`. Send exits 0 for `sent` and
-`duplicate`, 2 for a transport failure, and 1 for invalid input or missing
-configuration. See the repository's
+Text delivery sends one ordinary channel message with no thread. Forum
+delivery can reuse a logical route. Both modes support local duplicate
+suppression. See the repository's
 [outgoing-message decision](../../docs/outgoing-message-mvp.md) for the full
 contract and recurring-automation guidance.
 
@@ -149,7 +143,8 @@ Environment values override the per-user private configuration:
 
 | Variable | Purpose | Required |
 | --- | --- | --- |
-| `CODEX_DISCORD_WEBHOOK_URL` | Incoming webhook for a Discord forum channel | yes |
+| `CODEX_DISCORD_WEBHOOK_URL` | Incoming webhook for the selected Discord channel | yes |
+| `CODEX_DISCORD_DESTINATION_TYPE` | `text-channel` (default) or `forum-channel` | no |
 | `CODEX_DISCORD_MENTION_USER_ID` | Numeric 17–20 digit attention target | no |
 | `CODEX_DISCORD_STATE_FILE` | Override for routing state | no |
 
@@ -163,16 +158,17 @@ command falls back to `~/.codex/codex-discord/routing.json`.
 ## Opt-in installed-plugin smoke
 
 No ordinary test contacts Discord. After install, configuration, and hook
-trust, start a disposable Codex task and complete two turns. Confirm the first
-`Stop` creates a forum post and the second appends to it. Trigger only a
-harmless permission request, deny it, and confirm the attention message
+trust, start a disposable Codex task and complete two turns. For text delivery,
+confirm two ordinary messages appear without a thread. For forum delivery,
+confirm the first `Stop` creates a post and the second appends to it. Trigger
+only a harmless permission request, deny it, and confirm the attention message
 mentions only the configured user. The test is live and creates durable
 Discord content, so it remains explicitly opt-in.
 
 For a transport-only release smoke, assign a fresh
-`CODEX_DISCORD_STATE_FILE` and run `doctor --send-test` twice. The first
-delivery creates the diagnostic forum post and the second updates that same
-post. Diagnostic output is credential-free.
+`CODEX_DISCORD_STATE_FILE` and run `doctor --send-test` twice. Text delivery
+creates ordinary messages; forum delivery creates and then updates one
+diagnostic post. Diagnostic output is credential-free.
 
 ## Remaining limitations
 
@@ -207,7 +203,7 @@ Removing the plugin must preserve unrelated hooks:
 1. Run `codex plugin remove codex-discord@codex-discord`, restart
    Codex, and verify `/hooks` no longer lists the plugin's two handlers.
    Disabling all hooks globally is broader and is not required.
-2. Delete `PLUGIN_DATA/config.json` and stop exporting the three configuration
+2. Delete `PLUGIN_DATA/config.json` and stop exporting the four configuration
    variables. Removing a local value does not revoke the Discord webhook.
 3. Retain `PLUGIN_DATA/routing.json` and its adjacent lock file for thread
    continuity, or remove both only after the hooks are disabled. Removing
