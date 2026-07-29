@@ -98,9 +98,10 @@ Codex lifecycle hooks are the preferred automatic trigger:
 The workspace prototype now supports `Stop` and `PermissionRequest` through
 notification-only hooks. Explicit normalized `blocked` and `failed` outcomes
 use the same attention adapter; routine tool events are not registered.
-Milestones use the separate `milestone --enable` operation. See
-[Attention hook](attention-hook.md) for the public contracts and
-durable duplicate-delivery rule.
+User-requested progress updates and other explicit content use the generic
+outgoing-message surface. See [Attention hook](attention-hook.md) for the
+lifecycle contract and [Discord outgoing-message MVP](outgoing-message-mvp.md)
+for the explicit-write contract.
 
 The adapter should not depend heavily on parsing Codex transcript files.
 Codex exposes a transcript path to hooks, but the transcript format is not a
@@ -158,7 +159,7 @@ mention deliberately only for attention states.
 The prototype needs:
 
 - A Discord forum-channel webhook URL.
-- The Discord user ID to mention for attention states.
+- Optionally, the Discord user ID to mention for attention states.
 - A small local state store mapping Codex session IDs to Discord thread IDs.
 - Optional notification preferences.
 
@@ -166,7 +167,7 @@ Attention hooks additionally require the numeric Discord user ID in
 `CODEX_DISCORD_MENTION_USER_ID`. This value and the webhook remain untracked
 local configuration.
 
-The intentional setup, local-only health check, opt-in test delivery,
+The intentional connection, local-only health check, opt-in test delivery,
 credential-free diagnostic codes, routing-state lifecycle, and separate
 disable/uninstall choices are documented in
 [Setup and operations](setup-and-operations.md). The public local check is:
@@ -182,8 +183,15 @@ concurrency or richer history makes it useful.
 
 Secrets must not be committed to the repository. For workspace testing, the
 webhook URL should come from an environment variable or the macOS Keychain.
-The packaged plugin provides a masked setup command that writes owner-only
-per-user configuration under `PLUGIN_DATA`; users never edit source files.
+The packaged plugin now opens a nonce-bearing localhost connection page with a
+password-style webhook field. It verifies the destination before writing
+owner-only per-user configuration under `PLUGIN_DATA`.
+
+This is intentionally analogous to Slack at the user-experience boundary:
+the user asks to connect, completes a focused connection surface, and returns
+to Codex with a verified result. The transport remains the existing local
+Discord webhook. It is not presented as a registered OAuth connector, and the
+plugin's cache path and internal launcher are never user onboarding steps.
 
 ## Best-effort delivery contract
 
@@ -215,8 +223,8 @@ creating a new post never trigger stale-route recovery.
 
 ## Skill or plugin?
 
-A skill can teach Codex when and how to send a structured Discord message. It
-is useful for explicit notifications such as "send me a milestone update."
+A skill can teach Codex when and how to send a Discord-ready message. It is
+useful for explicit requests such as "send this progress update to Discord."
 However, a skill alone does not provide the strongest guarantee that every
 completion or permission request will be reported.
 
@@ -236,10 +244,12 @@ requirements, the current expectation is:
 
 The reusable package now lives at
 [`plugins/codex-discord`](../plugins/codex-discord/README.md). It bundles the
-proven runtime, default-discovered lifecycle hooks, setup and diagnostic
-commands, a guided first-run skill, and a focused explicit-milestone skill
-without shipping user configuration. The repository exposes it through the
-standard repo marketplace at `.agents/plugins/marketplace.json`.
+proven runtime, default-discovered lifecycle hooks, connection and diagnostic
+commands, a router skill, and a focused outgoing-message skill
+without shipping user configuration. The narrower milestone skill and command
+were removed when the generic send surface superseded them. The repository
+exposes the plugin through the standard repo marketplace at
+`.agents/plugins/marketplace.json`.
 
 ## Development phases
 
@@ -272,7 +282,7 @@ standard repo marketplace at `.agents/plugins/marketplace.json`.
 
 - Package the proven implementation as a Codex plugin.
 - Include a companion skill for explicit Discord updates.
-- Add setup, health-check, and uninstall instructions.
+- Add connection, health-check, and uninstall instructions.
 - Keep tokens and user-specific configuration outside the package.
 
 ### Future phase — Two-way control

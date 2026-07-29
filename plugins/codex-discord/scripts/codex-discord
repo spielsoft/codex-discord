@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Installed-plugin command boundary for the bundled notification runtime."""
+"""Installed-plugin command boundary for the bundled messaging runtime."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import json
 import os
 import sys
 import tempfile
-from getpass import getpass
 from pathlib import Path
 
 
@@ -84,50 +83,76 @@ def _write_private_configuration(values: dict[str, str]) -> None:
         raise
 
 
-def _run_setup() -> int:
+def _run_onboard(arguments: list[str]) -> int:
     from codex_discord.diagnostics import DISCORD_USER_ID, _webhook_is_usable
+    from codex_discord.publisher import publish_message
+    from onboarding import run_onboarding
+
+    open_browser = True
+    timeout_seconds = 900.0
+    remaining = list(arguments)
+    if "--no-open" in remaining:
+        remaining.remove("--no-open")
+        open_browser = False
+    if "--timeout-seconds" in remaining:
+        index = remaining.index("--timeout-seconds")
+        try:
+            timeout_seconds = float(remaining[index + 1])
+        except (IndexError, ValueError):
+            print(
+                "usage: codex-discord onboard [--no-open] "
+                "[--timeout-seconds SECONDS]",
+                file=sys.stderr,
+            )
+            return 1
+        del remaining[index : index + 2]
+    if remaining:
+        print(
+            "usage: codex-discord onboard [--no-open] "
+            "[--timeout-seconds SECONDS]",
+            file=sys.stderr,
+        )
+        return 1
+
+    def announce(value: object) -> None:
+        json.dump(value, sys.stdout)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
     try:
-        endpoint = getpass(
-            "Discord forum webhook URL (input hidden): ",
-            stream=sys.stderr,
-        ).strip()
-        print("Discord numeric user ID: ", end="", file=sys.stderr, flush=True)
-        mention_user_id = sys.stdin.readline().strip()
-    except (EOFError, KeyboardInterrupt):
-        print("\nSetup cancelled; no configuration was written.", file=sys.stderr)
-        return 1
-
-    if not _webhook_is_usable(endpoint):
-        print(
-            "Setup failed: enter an HTTPS webhook created for a Discord forum channel.",
-            file=sys.stderr,
+        result, exit_code = run_onboarding(
+            state_file=os.environ[STATE_ENVIRONMENT],
+            webhook_is_usable=_webhook_is_usable,
+            user_id_is_usable=lambda value: (
+                DISCORD_USER_ID.fullmatch(value) is not None
+            ),
+            publish_message=publish_message,
+            store_configuration=_write_private_configuration,
+            webhook_environment=WEBHOOK_ENVIRONMENT,
+            mention_environment=MENTION_ENVIRONMENT,
+            announce=announce,
+            open_browser=open_browser,
+            timeout_seconds=timeout_seconds,
         )
+    except (OSError, ValueError) as error:
+        print(f"onboarding failed: {error}", file=sys.stderr)
         return 1
-    if DISCORD_USER_ID.fullmatch(mention_user_id) is None:
-        print(
-            "Setup failed: enter the numeric 17–20 digit Discord user ID.",
-            file=sys.stderr,
+    except KeyboardInterrupt:
+        json.dump(
+            {
+                "status": "cancelled",
+                "message": (
+                    "Discord connection was cancelled. "
+                    "No configuration was changed."
+                ),
+            },
+            sys.stdout,
         )
+        sys.stdout.write("\n")
         return 1
-
-    _write_private_configuration(
-        {
-            WEBHOOK_ENVIRONMENT: endpoint,
-            MENTION_ENVIRONMENT: mention_user_id,
-        }
-    )
-    result = {
-        "status": "configured",
-        "config": str(_config_file()),
-        "state_default": str(_plugin_data() / "routing.json"),
-        "forum_post_naming": "Codex task — <project>",
-        "next_action": "Run doctor --send-test.",
-        "documentation": str(PLUGIN_ROOT / "README.md"),
-    }
     json.dump(result, sys.stdout)
     sys.stdout.write("\n")
-    return 0
+    return exit_code
 
 
 def _print_uninstall() -> int:
@@ -167,15 +192,14 @@ def _run_public_command(operation: str, arguments: list[str]) -> int:
         )
         return 1
     state_file = os.environ[STATE_ENVIRONMENT]
-    if operation == "milestone":
+    if operation == "send":
         sys.argv = [
             "codex-discord",
-            "milestone",
+            operation,
             "--endpoint",
             endpoint,
             "--state-file",
             state_file,
-            "--enable",
             *arguments,
         ]
         return main()
@@ -185,7 +209,7 @@ def _run_public_command(operation: str, arguments: list[str]) -> int:
 def main() -> int:
     if len(sys.argv) < 2:
         print(
-            "usage: codex-discord {setup|doctor|milestone|stop-hook|"
+            "usage: codex-discord {onboard|doctor|send|stop-hook|"
             "attention-hook|uninstall}",
             file=sys.stderr,
         )
@@ -194,11 +218,11 @@ def main() -> int:
     _configure_runtime()
     operation = sys.argv[1]
     arguments = sys.argv[2:]
-    if operation == "setup":
-        return _run_setup()
+    if operation == "onboard":
+        return _run_onboard(arguments)
     if operation == "uninstall":
         return _print_uninstall()
-    if operation in ("doctor", "milestone"):
+    if operation in ("doctor", "send"):
         return _run_public_command(operation, arguments)
     if arguments:
         print(f"{operation} does not accept arguments", file=sys.stderr)

@@ -48,10 +48,10 @@ surface supplies a reliable task title and final summary without depending on
 the unstable transcript format.
 
 After the behavior is proven from the workspace, package it as a Codex plugin
-that bundles lifecycle hooks, the adapter, setup and diagnostic commands, and
-a companion skill for explicit milestone notifications. A skill by itself is
-not the expected final package because automatic lifecycle delivery and
-persistent routing are core requirements.
+that bundles lifecycle hooks, the adapter, connection and diagnostic commands, and
+a companion skill for explicit outgoing messages. A skill by itself is not the
+expected final package because automatic lifecycle delivery and persistent
+routing are core requirements.
 
 ## User Stories
 
@@ -81,9 +81,9 @@ persistent routing are core requirements.
     so that I can distinguish completed work from merely attempted work.
 13. As a Codex user, I want notifications to show the next action when one
     exists, so that I know what to do when I return.
-14. As a Codex user, I want optional explicit milestone notifications, so that
-    long-running tasks can report meaningful progress without reporting every
-    tool call.
+14. As a Codex user, I want to send an explicit free-form Discord message, so
+    that workflows can report meaningful progress or deliver generated output
+    without pretending it is a lifecycle event.
 15. As a Codex user, I want routine intermediate activity suppressed, so that
     the Discord server remains useful rather than noisy.
 16. As a Codex user, I want unexpected Discord mentions disabled, so that
@@ -109,7 +109,7 @@ persistent routing are core requirements.
 25. As a developer, I want live Discord tests to be explicitly enabled, so that
     ordinary test runs do not send messages or require secrets.
 26. As a developer, I want a diagnostic command that validates configuration
-    without exposing credentials, so that setup failures are understandable.
+    without exposing credentials, so that connection failures are understandable.
 27. As a developer, I want a transport spike to prove forum-post creation and
     follow-up delivery, so that implementation rests on verified Discord
     behavior.
@@ -118,16 +118,18 @@ persistent routing are core requirements.
 29. As a developer, I want the summary source evaluated without relying on a
     private transcript schema, so that Codex updates do not silently break
     notifications.
-30. As a plugin user, I want an intentional setup workflow, so that I can
-    configure a webhook, mention target, and preferences without editing
-    package source.
-31. As a plugin user, I want a health check, so that I can verify the
+30. As a plugin user, I want an intentional connection workflow, so that I can
+    configure a webhook and verify messaging without editing package source or
+    enabling optional lifecycle notifications.
+31. As a plugin user, I want Codex to open a focused connection window, so that
+    I never need to discover or run a versioned plugin-cache command.
+32. As a plugin user, I want a health check, so that I can verify the
     integration before relying on it.
-32. As a plugin user, I want uninstall instructions that identify retained
+33. As a plugin user, I want uninstall instructions that identify retained
     state and credentials, so that removal is predictable.
-33. As a future integrator, I want the Codex-session-to-Discord-thread mapping
+34. As a future integrator, I want the Codex-session-to-Discord-thread mapping
     preserved, so that two-way control can later reuse the same task identity.
-34. As a security-conscious user, I want inbound Discord control excluded from
+35. As a security-conscious user, I want inbound Discord control excluded from
     the first release, so that authentication and prompt-injection risks are
     not introduced prematurely.
 
@@ -146,8 +148,9 @@ persistent routing are core requirements.
   notification model. Discord payload construction, thread routing, state
   persistence, retry behavior, and redaction remain encapsulated behind that
   operation.
-- The normalized notification model distinguishes completed, needs-input,
-  blocked, failed, and optional milestone states.
+- The normalized lifecycle model distinguishes completed, needs-input,
+  blocked, and failed states. Explicit messages use the separate generic send
+  operation.
 - The model carries structured fields rather than a preformatted transcript:
   session identity, task title, project, result, validation, next action, and
   intended mention behavior.
@@ -157,9 +160,9 @@ persistent routing are core requirements.
   access must tolerate multiple notification processes without corrupting the
   store. SQLite should only replace JSON if concurrency testing demonstrates a
   real need.
-- The workspace prototype reads the webhook URL and mention target from
-  environment-based configuration. macOS Keychain integration may be added
-  later, but secrets will never be stored in tracked project files.
+- The workspace prototype reads the webhook URL and optional attention target
+  from environment-based configuration. macOS Keychain integration may be
+  added later, but secrets will never be stored in tracked project files.
 - Outbound content is length-limited and sanitized. Discord
   `allowed_mentions` is restrictive by default; the configured user mention is
   added deliberately only for attention states.
@@ -183,23 +186,27 @@ persistent routing are core requirements.
   dependencies. Packaging portability will be evaluated before the workspace
   prototype is promoted to a reusable plugin.
 - The target reusable artifact is a Codex plugin containing hooks, the adapter,
-  configuration diagnostics, and a companion skill for explicit milestone
-  updates.
+  configuration diagnostics, and a companion skill for explicit outgoing
+  messages.
 - Project tags, multiple forum channels, rich interactive Discord components,
   and status-tag mutation are deferred until the simple task-thread model is
   proven.
-- The Discord setup itself is a human-in-the-loop activity because a user must
+- The Discord connection itself is a human-in-the-loop activity because a user must
   create or select the private server, forum channel, webhook, and notification
   preferences.
+- Codex launches a nonce-bearing localhost connection page with a
+  password-style webhook field. The page tests Discord before saving, and the
+  skill never exposes the internal launcher or installed cache path as a user
+  onboarding step.
 
 ## Testing Decisions
 
 - Tests will assert public behavior and stable boundaries rather than internal
   method calls, private helper structure, or the exact layout of the state
   file.
-- Formatter tests will verify status presentation, length limits, explicit
-  mention behavior, suppression of unexpected mentions, and safe handling of
-  malformed or hostile text.
+- Formatter tests will verify lifecycle status presentation, free-form message
+  preservation, length limits, explicit mention behavior, suppression of
+  unexpected mentions, and safe handling of malformed or hostile text.
 - Routing tests will verify that the first event for a session creates a forum
   post, later events append to it, and a different session creates a different
   post.
@@ -215,6 +222,9 @@ persistent routing are core requirements.
   timeout.
 - Configuration tests will verify missing, malformed, and valid settings
   without printing the webhook credential.
+- Browser-onboarding tests will verify the private form, validation,
+  verify-before-save behavior, cancellation, credential redaction, and
+  credential-free success confirmation.
 - A manually enabled live smoke test will create a forum post and append a
   second message in the private test server.
 - Human verification will confirm Discord mobile notification behavior,

@@ -54,21 +54,12 @@ This is an at-least-once transport with durable replay suppression, not a
 distributed exactly-once protocol. A process crash after Discord accepts a
 request but before local state is replaced can still duplicate that message.
 
-## Explicit milestones
+## Explicit messages
 
-Milestones are never lifecycle-generated. The explicit public operation reads
-the normal structured notification fields, supplies `milestone` status itself,
-and publishes only with `--enable`:
-
-```sh
-python3 -m codex_discord milestone \
-  --endpoint "$CODEX_DISCORD_WEBHOOK_URL" \
-  --state-file "$CODEX_DISCORD_STATE_FILE" \
-  --enable
-```
-
-Without `--enable`, it returns a JSON `suppressed` outcome and performs no HTTP
-request. Milestones reuse the session route and never mention a user.
+Explicit progress updates and other user-authored Discord content use the
+single generic outgoing-message surface described in
+[Discord outgoing-message MVP](outgoing-message-mvp.md). They are not modeled
+as lifecycle events and never mention a user automatically.
 
 ## Configuration
 

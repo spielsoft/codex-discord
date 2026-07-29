@@ -195,9 +195,29 @@ class SetupDiagnosticTests(unittest.TestCase):
         outcome = json.loads(completed.stdout)
         self.assertEqual(outcome["status"], "configuration-error")
         self.assertEqual(outcome["checks"]["webhook"], "missing")
-        self.assertEqual(outcome["checks"]["mention_user_id"], "missing")
+        self.assertEqual(
+            outcome["checks"]["mention_user_id"],
+            "not-configured",
+        )
         self.assertIn(WEBHOOK_ENVIRONMENT, outcome["issues"][0]["action"])
-        self.assertIn(MENTION_ENVIRONMENT, json.dumps(outcome["issues"]))
+        self.assertNotIn(MENTION_ENVIRONMENT, json.dumps(outcome["issues"]))
+        self.assertEqual(DiagnosticDiscordHandler.requests, [])
+        self.assert_secret_free(completed)
+
+    def test_webhook_only_configuration_is_ready_for_send_only_workflows(self):
+        environment = self.environment()
+        environment.pop(MENTION_ENVIRONMENT)
+
+        completed = self.run_doctor(environment=environment)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        outcome = json.loads(completed.stdout)
+        self.assertEqual(outcome["status"], "ready")
+        self.assertEqual(outcome["checks"]["webhook"], "usable")
+        self.assertEqual(
+            outcome["checks"]["mention_user_id"],
+            "not-configured",
+        )
         self.assertEqual(DiagnosticDiscordHandler.requests, [])
         self.assert_secret_free(completed)
 

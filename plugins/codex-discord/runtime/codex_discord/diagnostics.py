@@ -102,14 +102,7 @@ def _inspect_configuration(
 
     mention_user_id = environment.get(MENTION_ENVIRONMENT, "")
     if not mention_user_id.strip():
-        checks["mention_user_id"] = "missing"
-        issues.append(
-            _issue(
-                "mention-user-id-missing",
-                "The Discord attention target is not configured.",
-                f"Set {MENTION_ENVIRONMENT} to the numeric Discord user ID.",
-            )
-        )
+        checks["mention_user_id"] = "not-configured"
     elif DISCORD_USER_ID.fullmatch(mention_user_id.strip()) is None:
         checks["mention_user_id"] = "malformed"
         issues.append(

@@ -1,23 +1,25 @@
 # Codex Discord plugin
 
-This reusable, one-way Codex plugin sends selected lifecycle events to a
-Discord forum webhook. It never reads Discord, approves requests, or controls
-Codex.
+This reusable, one-way Codex plugin sends explicit messages and selected
+lifecycle events to a Discord forum webhook. It never reads Discord, approves
+requests, or controls Codex.
 
 ## Package contents
 
 - `hooks/hooks.json`: notification-only `Stop` and `PermissionRequest` hooks,
   discovered by Codex at the plugin default path.
 - `runtime/codex_discord/`: independent Python standard-library runtime.
-- `scripts/codex-discord`: setup, doctor, milestone, hook, and removal-guidance
-  command boundary.
-- `skills/discord-setup/`: guided first-run connection and verification.
-- `skills/discord-milestone/`: focused workflow for user-requested milestones.
+- `scripts/codex-discord` and `scripts/onboarding.py`: private connection UI,
+  doctor, outgoing-message, hook, and removal-guidance boundary.
+- `skills/discord/`: Slack-inspired router for connection, checks, and
+  workflow selection.
+- `skills/discord-outgoing-message/`: direct free-form writes to the configured
+  Discord destination.
 
 The manifest intentionally omits a `hooks` field. Codex discovers
 `hooks/hooks.json` by convention. Hook commands resolve installed code through
 `PLUGIN_ROOT` and default writable routing state to
-`PLUGIN_DATA/routing.json`. Guided setup stores per-user configuration in
+`PLUGIN_DATA/routing.json`. Guided connection stores per-user configuration in
 `PLUGIN_DATA/config.json`; no credential or user-specific configuration is
 shipped in the package.
 
@@ -26,7 +28,8 @@ shipped in the package.
 The plugin needs:
 
 - one incoming webhook created for the destination Discord **forum channel**;
-- one numeric Discord user ID for deliberate attention mentions.
+- optionally, one numeric Discord user ID for deliberate automatic attention
+  mentions.
 
 It does not need the name or ID of a pre-existing forum post. On the first
 event for a Codex session, the webhook creates `Codex task — <project>`.
@@ -41,8 +44,8 @@ Compatibility evidence from July 27, 2026 covers
 - `Stop` was observed in CLI and desktop with a usable
   `last_assistant_message`.
 - `PermissionRequest` was observed in CLI. Desktop attention delivery retains
-  the explicit milestone/notification fallback because a desktop permission
-  event was not observed.
+  the explicit outgoing-message fallback because a desktop permission event
+  was not observed.
 - Plugin hooks require review and trust on both surfaces.
 
 The bundled runtime requires macOS or another POSIX environment with
@@ -72,9 +75,10 @@ codex plugin add codex-discord@codex-discord
 ```
 
 These commands mutate the user's Codex plugin configuration and are therefore
-explicit opt-in steps. Start a new Codex task after installation, run `/hooks`,
-inspect the plugin source, and trust exactly the two packaged hooks. Changed
-hook definitions require review again.
+explicit opt-in steps. Start a new Codex task after installation. The two
+packaged lifecycle hooks are optional; inspect and trust them only if automatic
+completion and attention delivery is desired. Changed hook definitions require
+review again.
 
 The installed `codex-cli 0.146.0-alpha.3.1` exposes no `--config-dir` or
 `--config-file` option on `plugin`, `plugin marketplace add`, or `plugin add`.
@@ -85,44 +89,68 @@ exercise the same manifest, hooks, commands, and bundled runtime without
 invoking the user-config-mutating plugin CLI. A real marketplace add/install
 remains the explicit opt-in procedure above.
 
-## First-run setup
+## Connect
 
-After installation, select the starter prompt **Set up Codex Discord
-notifications**, or invoke `$discord-setup`. The guided workflow explains how
-to create the forum webhook and copy a numeric Discord user ID.
+After installation, select the starter prompt **Connect Discord**, or invoke
+`$discord`. Codex opens a private localhost connection window that explains
+how to create the forum webhook, accepts it in a password-style field, and
+optionally accepts a numeric user ID for automatic attention mentions.
 
-Run the setup command from a local terminal so the webhook never enters a chat
-or Codex transcript:
+Select **Connect and test**. The plugin sends one visible
+`Codex Discord is connected and ready` message and saves
+`PLUGIN_DATA/config.json` with owner-only permissions only after Discord
+accepts the test. The window then confirms the credential-free message and
+thread IDs. Users are never asked to run an installed cache-path command or
+put the webhook in a Codex conversation.
 
-```sh
-/usr/bin/python3 scripts/codex-discord setup
-```
-
-Webhook input is hidden. The command validates both values locally and writes
-`PLUGIN_DATA/config.json` with owner-only permissions. Then verify the local
-configuration and deliberately send one test:
-
-```sh
-/usr/bin/python3 scripts/codex-discord doctor
-/usr/bin/python3 scripts/codex-discord doctor --send-test
-```
-
-The first command is local-only. The second creates a diagnostic forum post.
-Start a new Codex task, inspect and trust the two packaged hooks, and complete
-one turn to verify automatic delivery.
+PersonalAssistant and other send-only workflows require no further onboarding.
+To use automatic lifecycle notifications too, start a new Codex task, inspect
+and trust the two packaged hooks, and complete one test turn.
 
 Each user has independent `PLUGIN_DATA`. A workspace can direct everyone to
-one forum webhook while giving each person their own numeric mention ID.
+one forum webhook while optionally giving each person their own numeric
+attention ID.
+
+## Send an explicit message
+
+Ask Codex to send or post text to Discord, or invoke
+`$discord-outgoing-message`. The skill sends immediately only when the user or
+calling automation explicitly requests a write. Draft and review requests stay
+in chat.
+
+The installed command accepts one JSON object on standard input:
+
+```sh
+/usr/bin/python3 scripts/codex-discord send
+```
+
+```json
+{
+  "message": "Your complete Discord-ready message.",
+  "thread_name": "Daily Brief",
+  "route_key": "personal-assistant:daily-brief",
+  "idempotency_key": "personal-assistant:daily-brief:2026-07-29"
+}
+```
+
+Only `message` is required. The command always uses the private webhook chosen
+during connection. It returns `sent` with `message_id` and `thread_id`, `duplicate`
+for an idempotent no-op, or `delivery-failed`. Send exits 0 for `sent` and
+`duplicate`, 2 for a transport failure, and 1 for invalid input or missing
+configuration. See the repository's
+[outgoing-message decision](../../docs/outgoing-message-mvp.md) for the full
+contract and recurring-automation guidance.
 
 ## Managed configuration
 
-Administrators can provide environment variables instead of interactive setup.
+Administrators can provide environment variables instead of interactive
+connection.
 Environment values override the per-user private configuration:
 
 | Variable | Purpose | Required |
 | --- | --- | --- |
 | `CODEX_DISCORD_WEBHOOK_URL` | Incoming webhook for a Discord forum channel | yes |
-| `CODEX_DISCORD_MENTION_USER_ID` | Numeric 17–20 digit attention target | yes |
+| `CODEX_DISCORD_MENTION_USER_ID` | Numeric 17–20 digit attention target | no |
 | `CODEX_DISCORD_STATE_FILE` | Override for routing state | no |
 
 The webhook is a credential. Keep it out of shell history, screenshots, issue

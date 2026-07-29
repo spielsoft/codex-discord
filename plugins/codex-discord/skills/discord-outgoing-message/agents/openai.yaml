@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discord Outgoing Message"
+  short_description: "Send one message to configured Discord"
+  default_prompt: "Use $discord-outgoing-message to send this message to my configured Discord destination."

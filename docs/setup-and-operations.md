@@ -1,8 +1,8 @@
 # Setup and operations
 
-The workspace integration is local and one-way. It posts selected Codex
-lifecycle events to Discord; it never reads Discord, grants permissions, or
-controls Codex.
+The integration is local and one-way. It sends explicit messages and,
+optionally, selected Codex lifecycle events to Discord; it never reads Discord,
+grants permissions, or controls Codex.
 
 ## Discord prerequisites
 
@@ -12,9 +12,9 @@ Create or select all of the following:
 2. A **forum channel** in that server. A text channel is not interchangeable:
    the integration creates one forum post for each Codex session.
 3. An incoming webhook created for that forum channel.
-4. The numeric, 17–20 digit Discord user ID that should be mentioned for
-   attention events. Enable Discord Developer Mode and use **Copy User ID**;
-   a display name or username is not a user ID.
+4. Optional: the numeric, 17–20 digit Discord user ID that should be mentioned
+   for automatic attention events. Enable Discord Developer Mode and use
+   **Copy User ID**; a display name or username is not a user ID.
 
 The webhook URL is a credential. Keep it outside the repository, hook JSON,
 shell scripts, screenshots, issue reports, and command output. Prefer a local
@@ -29,7 +29,7 @@ The hooks and `doctor` command read:
 | Environment variable | Purpose | Required |
 | --- | --- | --- |
 | `CODEX_DISCORD_WEBHOOK_URL` | HTTPS incoming webhook for the forum channel | Yes |
-| `CODEX_DISCORD_MENTION_USER_ID` | Numeric user ID allowed for attention mentions | Yes |
+| `CODEX_DISCORD_MENTION_USER_ID` | Numeric user ID allowed for attention mentions | No |
 | `CODEX_DISCORD_STATE_FILE` | Absolute routing-state path | No |
 
 When `CODEX_DISCORD_STATE_FILE` is absent, the default is:
@@ -43,6 +43,17 @@ not only in an unrelated terminal. Do not add the webhook to
 `.codex/hooks.json`; the example hook definition intentionally contains no
 credentials.
 
+For an installed plugin, select **Connect Discord** or invoke `$discord`.
+Codex opens a private localhost connection window. The window explains the
+Discord prerequisites, accepts the webhook in a password-style field, accepts
+an optional attention user ID, and sends one visible connection test.
+Owner-only configuration is written only after Discord accepts the test.
+
+The launcher and installed cache path remain implementation details. The
+onboarding skill must never ask the user to run either from a terminal. A
+send-only workflow is ready when the window reports that Discord is connected
+and Codex reports the credential-free message and thread IDs.
+
 ## Local health check
 
 Run this before enabling the hooks:
@@ -52,9 +63,9 @@ python3 -m codex_discord doctor
 ```
 
 This default command sends nothing and does not contact Discord. It validates
-the webhook shape, mention-user-ID shape, and local state format, then prints
-credential-free JSON. It never prints the webhook, token, mention user ID,
-session IDs, or Discord thread IDs.
+the webhook shape, an attention user ID when configured, and local state
+format, then prints credential-free JSON. It never prints the webhook, token,
+mention user ID, session IDs, or Discord thread IDs.
 
 Exit status is part of the public command contract:
 
@@ -76,11 +87,12 @@ outcomes with a safe action. Local loopback webhook-shaped URLs are accepted
 for offline fake-service testing; non-loopback HTTP URLs and non-Discord
 internet hosts are rejected.
 
-After the local check or explicit test succeeds, copy
-`.codex/hooks.example.json` to the ignored `.codex/hooks.json`, restart Codex
-with the three settings available, inspect `/hooks`, and trust the two
-workspace hooks. See [Stop hook](stop-hook.md) and
-[attention hook](attention-hook.md) for their event contracts.
+Explicit messaging needs no lifecycle hooks. To add automatic lifecycle
+notifications, copy `.codex/hooks.example.json` to the ignored
+`.codex/hooks.json`, restart Codex with the applicable settings available,
+inspect `/hooks`, and trust the two workspace hooks. See
+[Stop hook](stop-hook.md) and [attention hook](attention-hook.md) for their
+event contracts.
 
 ## Routing state
 

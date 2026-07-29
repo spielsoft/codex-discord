@@ -358,40 +358,6 @@ class PublishCompletionTests(unittest.TestCase):
             },
         )
 
-    def test_milestones_are_suppressed_until_explicitly_enabled(self):
-        notification = {
-            "session_id": "milestone-session",
-            "status": "milestone",
-            "task_title": "Long-running task",
-            "project": "Safety",
-            "result": "Reached a meaningful checkpoint.",
-            "validation": "Intermediate checks passed.",
-        }
-
-        suppressed = self.run_publish(notification)
-
-        self.assertEqual(suppressed.returncode, 0, suppressed.stderr)
-        self.assertEqual(
-            json.loads(suppressed.stdout),
-            {
-                "session_id": "milestone-session",
-                "status": "suppressed",
-            },
-        )
-        self.assertEqual(RecordingDiscordHandler.requests, [])
-
-        published = self.run_publish(notification, "--enable-milestones")
-
-        self.assertEqual(published.returncode, 0, published.stderr)
-        self.assertIn(
-            "🔵 Milestone — Long-running task",
-            RecordingDiscordHandler.requests[0]["body"]["content"],
-        )
-        self.assertEqual(
-            RecordingDiscordHandler.requests[0]["body"]["allowed_mentions"]["users"],
-            [],
-        )
-
     def test_task_content_cannot_create_discord_mentions(self):
         configured_user_id = "123456789012345678"
         hostile_text = (

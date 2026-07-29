@@ -6,3 +6,4 @@ __pycache__/
 htmlcov/
 .codex/lifecycle-spike/
 .codex/hooks.json
+.agents/skills/

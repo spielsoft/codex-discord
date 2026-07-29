@@ -14,9 +14,42 @@ Work through these tracer-bullet slices in dependency order.
 - [x] Slice 6: Select the reliable Codex lifecycle inputs
 - [x] Slice 7: Notify automatically when a Codex turn stops
 - [x] Slice 8: Notify automatically when Codex needs attention
-- [x] Slice 9: Add setup and operational diagnostics
+- [x] Slice 9: Add connection and operational diagnostics
 - [x] Slice 10: Package the integration as a Codex plugin
 - [x] Slice 11: Clean the test suite and verify release readiness
+- [x] Slice 12: Add a generic outgoing-message facade
+
+## Slice 12: Add a generic outgoing-message facade
+
+### Type
+
+`AFK`
+
+### What to build
+
+Expose one direct, free-form Discord write without requiring a caller to model
+its content as a Codex lifecycle milestone. Reuse the configured forum webhook
+and existing delivery engine, and return an automation-readable result.
+
+### Acceptance criteria
+
+- [x] Explicit send intent routes through a focused outgoing-message skill.
+- [x] A public command accepts one free-form message and sends exactly one
+      Discord message per successful invocation.
+- [x] The connection-selected forum remains the default and only MVP destination.
+- [x] Stable route keys reuse an existing forum post.
+- [x] Deterministic idempotency keys suppress a second Discord request.
+- [x] Success reports Discord message and thread identities.
+- [x] Transport failure is structured and exits 2; invalid input exits 1.
+- [x] Automatic lifecycle notifications and hooks remain separate.
+- [x] The superseded milestone skill and command are removed.
+- [x] Tests exercise the installed plugin and public runtime without live
+      credentials.
+
+### Outcome
+
+The implementation and decision record are documented in
+[outgoing-message-mvp.md](outgoing-message-mvp.md).
 
 ## Slice 1: Publish one completion through a fake Discord service
 
@@ -318,9 +351,8 @@ post. The temporary active workspace hook was removed after verification.
 ### What to build
 
 Connect permission, blocked, and failed lifecycle outcomes to the safe
-attention-notification path, and expose an explicit milestone operation for
-long-running tasks. Attention messages should update the same Discord task
-thread and mention only the configured user.
+attention-notification path. Attention messages should update the same Discord
+task thread and mention only the configured user.
 
 ### Acceptance criteria
 
@@ -330,24 +362,20 @@ thread and mention only the configured user.
       deliberate mention behavior.
 - [x] Attention notifications do not approve, deny, or otherwise control
       Codex.
-- [x] An explicit milestone operation can publish to the current task thread
-      when enabled.
 - [x] Routine intermediate tool activity produces no Discord messages.
 - [x] Duplicate lifecycle delivery is handled according to a documented
       idempotency rule.
-- [x] Fixture tests cover each attention state, milestone opt-in, suppression,
-      and duplicate delivery.
+- [x] Fixture tests cover each attention state and duplicate delivery.
 
 ### Slice 8 outcome
 
 `PermissionRequest` now posts a notification-only `needs-input` event to the
 existing session route and deliberately mentions only the configured user.
 Adapter-owned normalized blocked and failed outcomes use the same safe path;
-they are not claimed as native Codex lifecycle events. Explicit milestones
-require `--enable`. A durable event digest suppresses acknowledged replays
-across processes while leaving failed deliveries retryable; the 256-entry
-retention bound and acknowledgement-before-state-write crash window are
-documented.
+they are not claimed as native Codex lifecycle events. A durable event digest
+suppresses acknowledged replays across processes while leaving failed
+deliveries retryable; the 256-entry retention bound and
+acknowledgement-before-state-write crash window are documented.
 
 ### Blocked by
 
@@ -355,9 +383,9 @@ documented.
 
 ### User stories covered
 
-- User stories 2–6 and 14–16.
+- User stories 2–6, 15, and 16.
 
-## Slice 9: Add setup and operational diagnostics
+## Slice 9: Add connection and operational diagnostics
 
 ### Type
 
@@ -365,14 +393,14 @@ documented.
 
 ### What to build
 
-Provide an intentional local setup and support workflow. Users can discover
+Provide an intentional local connection and support workflow. Users can discover
 required settings, validate configuration without leaking secrets, run an
 opt-in health check, inspect safe delivery diagnostics, and understand what
 state or credentials remain when the integration is disabled or removed.
 
 ### Acceptance criteria
 
-- [x] Setup documentation identifies the required Discord objects,
+- [x] Connection documentation identifies the required Discord objects,
       configuration values, and safe secret-storage expectations.
 - [x] A diagnostic command distinguishes missing, malformed, and usable
       configuration without printing the webhook credential.
@@ -392,9 +420,9 @@ state or credentials remain when the integration is disabled or removed.
 credential-free JSON with documented exit codes. Network access requires the
 explicit `--send-test` flag and reuses the bounded publisher. Setup guidance
 separates hook activation, environment configuration, state retention/removal,
-credential revocation, and code uninstall. The local check validates webhook
-and mention syntax plus existing state contents; actual Discord access and
-first-write state permissions remain properties of the explicit test.
+credential revocation, and code uninstall. The local check validates webhook,
+optional mention syntax, and existing state contents; actual Discord access
+and first-write state permissions remain properties of the explicit test.
 
 ### Blocked by
 
@@ -413,8 +441,8 @@ first-write state permissions remain properties of the explicit test.
 ### What to build
 
 Package the proven workspace implementation as a reusable Codex plugin. Bundle
-the supported lifecycle hooks, notification adapter, setup and diagnostic
-workflow, and a focused companion skill for explicit milestone notifications.
+the supported lifecycle hooks, notification adapter, connection and diagnostic
+workflow, and a focused companion skill for explicit outgoing messages.
 Verify installation in a clean environment without embedding user
 configuration or secrets.
 
@@ -423,7 +451,7 @@ configuration or secrets.
 - [x] The package has a valid Codex plugin manifest and bundles only the
       required hooks, runtime assets, documentation, and companion skill.
 - [x] Plugin installation exposes the lifecycle hooks and user-facing commands
-      through the documented trust and setup flow.
+      through the documented trust and connection flow.
 - [x] No Discord credential, user identifier, routing state, or live-test
       artifact is contained in the package.
 - [x] The companion skill describes explicit notification workflows without
@@ -440,7 +468,7 @@ configuration or secrets.
 
 The repository-contained `plugins/codex-discord` package has a validated
 manifest, default-discovered lifecycle hooks, an independent standard-library
-runtime, setup/doctor/milestone/removal commands, and a focused milestone
+runtime, connect/doctor/send/removal commands, and a focused outgoing-message
 skill. Clean-copy tests exercise the packaged hooks and commands without the
 workspace runtime. An isolated packaged-hook smoke delivered live on July 27,
 2026. A real `codex plugin add` remains an explicit opt-in because the installed
@@ -449,7 +477,7 @@ user's process-wide Codex configuration.
 
 ### Blocked by
 
-- Slice 9: Add setup and operational diagnostics.
+- Slice 9: Add connection and operational diagnostics.
 
 ### User stories covered
 

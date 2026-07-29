@@ -1,5 +1,13 @@
-"""Local Codex-to-Discord notification adapter."""
+"""Local Codex-to-Discord messaging adapter."""
 
-from .publisher import DeliveryPolicy, publish_completion, publish_notification
+from .publisher import (
+    DeliveryPolicy,
+    publish_message,
+    publish_notification,
+)
 
-__all__ = ["DeliveryPolicy", "publish_completion", "publish_notification"]
+__all__ = [
+    "DeliveryPolicy",
+    "publish_message",
+    "publish_notification",
+]

@@ -49,7 +49,6 @@ STATUS_PRESENTATION = {
     "needs-input": ("🟠", "Needs input", True),
     "blocked": ("🔴", "Blocked", True),
     "failed": ("❌", "Failed", True),
-    "milestone": ("🔵", "Milestone", False),
 }
 
 FIELD_LIMITS = {
@@ -62,6 +61,8 @@ FIELD_LIMITS = {
 
 DISCORD_CONTENT_LIMIT = 2000
 DISCORD_THREAD_NAME_LIMIT = 100
+DEFAULT_MESSAGE_ROUTE_KEY = "discord-outgoing-message"
+DEFAULT_MESSAGE_THREAD_NAME = "Codex messages"
 DISCORD_USER_AGENT = "DiscordBot (https://github.com/openai/codex, 0.1)"
 DISCORD_USER_ID = re.compile(r"[0-9]{17,20}\Z")
 CONTROL_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -141,6 +142,48 @@ def _event_id(notification: Mapping[str, object]) -> Optional[str]:
     if len(normalized) > 512:
         raise ValueError("event_id must not exceed 512 characters")
     return normalized
+
+
+def _optional_identifier(
+    payload: Mapping[str, object],
+    field: str,
+    default: Optional[str] = None,
+) -> Optional[str]:
+    value = payload.get(field, default)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string when provided")
+    normalized = value.strip()
+    if len(normalized) > 512:
+        raise ValueError(f"{field} must not exceed 512 characters")
+    return normalized
+
+
+def _freeform_message(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("message must be a non-empty string")
+    scalar_text = "".join(
+        "\ufffd" if 0xD800 <= ord(character) <= 0xDFFF else character
+        for character in value
+    )
+    normalized = unicodedata.normalize("NFC", scalar_text)
+    normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = CONTROL_CHARACTERS.sub(" ", normalized).strip()
+    if not normalized:
+        raise ValueError("message must be a non-empty string")
+    content = _sanitize_mentions(normalized)
+    if _utf16_length(content) > DISCORD_CONTENT_LIMIT:
+        raise ValueError("message exceeds Discord's 2000-character limit")
+    return content
+
+
+def _message_thread_name(value: object) -> str:
+    return _normalize_text(
+        value,
+        "thread_name",
+        DISCORD_THREAD_NAME_LIMIT,
+    )
 
 
 def _mention_user_id(value: Optional[str], attention: bool) -> Optional[str]:
@@ -264,14 +307,14 @@ def _retry_delay(
     return min(delay, maximum_delay)
 
 
-def _failure_result(
-    session_id: str,
+def _delivery_failure(
+    route_key: str,
     attempts: int,
     diagnostic: str,
     retryable: bool,
 ) -> Mapping[str, object]:
     return {
-        "session_id": session_id,
+        "route_key": route_key,
         "status": "delivery-failed",
         "attempts": attempts,
         "retryable": retryable,
@@ -279,16 +322,18 @@ def _failure_result(
     }
 
 
-def _success_result(
-    session_id: str,
+def _delivery_success(
+    route_key: str,
     thread_id: str,
+    message_id: str,
     attempts: int,
     route_recovered: bool,
 ) -> Mapping[str, object]:
     result = {
-        "session_id": session_id,
+        "route_key": route_key,
         "status": "published",
         "thread_id": thread_id,
+        "message_id": message_id,
     }
     if attempts > 1:
         result["attempts"] = attempts
@@ -316,12 +361,285 @@ def _read_response(http_response: object) -> Mapping[str, object]:
     return response_body
 
 
+def _deliver(
+    route_key: str,
+    thread_name: str,
+    common_payload: Mapping[str, object],
+    event_id: Optional[str],
+    endpoint: str,
+    state_file: Union[str, Path],
+    policy: DeliveryPolicy,
+) -> Mapping[str, object]:
+    deadline = time.monotonic() + policy.delivery_timeout_seconds
+    attempts = 0
+    route_recovered = False
+    try:
+        with RoutingState(state_file).locked_state(
+            timeout_seconds=policy.delivery_timeout_seconds
+        ) as state:
+            routes = state["routes"]
+            delivered_events = state["delivered_events"]
+            if not isinstance(routes, dict) or not isinstance(
+                delivered_events, list
+            ):
+                raise ValueError("routing state is invalid")
+            if event_id is not None and event_id in delivered_events:
+                duplicate = {
+                    "route_key": route_key,
+                    "status": "duplicate",
+                }
+                existing_thread = routes.get(route_key)
+                if isinstance(existing_thread, str):
+                    duplicate["thread_id"] = existing_thread
+                return duplicate
+            thread_id = routes.get(route_key)
+            while attempts < policy.max_attempts:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return _delivery_failure(
+                        route_key,
+                        attempts,
+                        "Discord delivery timed out before another attempt.",
+                        True,
+                    )
+
+                payload = dict(common_payload)
+                if thread_id is None:
+                    payload["thread_name"] = thread_name
+                replacement_attempt = route_recovered and thread_id is None
+                http_request = _request_payload(endpoint, thread_id, payload)
+                attempts += 1
+
+                try:
+                    with request.urlopen(
+                        http_request,
+                        timeout=min(policy.request_timeout_seconds, remaining),
+                    ) as response:
+                        response_body = _read_response(response)
+                except error.HTTPError as exc:
+                    if (
+                        thread_id is not None
+                        and not route_recovered
+                        and exc.code in STALE_THREAD_STATUSES
+                    ):
+                        routes.pop(route_key, None)
+                        thread_id = None
+                        route_recovered = True
+                        if attempts < policy.max_attempts:
+                            continue
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord thread route was stale and the attempt limit "
+                            "prevented replacement.",
+                            True,
+                        )
+
+                    transient = (
+                        exc.code in TRANSIENT_HTTP_STATUSES
+                        or 500 <= exc.code <= 599
+                    )
+                    if replacement_attempt:
+                        failure_kind = "transient " if transient else ""
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord replacement thread creation returned "
+                            f"{failure_kind}HTTP {exc.code}; the route remains "
+                            "cleared.",
+                            transient,
+                        )
+                    if not transient:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            f"Discord returned HTTP {exc.code}; message was "
+                            "not delivered.",
+                            False,
+                        )
+                    if attempts >= policy.max_attempts:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            f"Discord returned transient HTTP {exc.code} after "
+                            f"{attempts} attempts.",
+                            True,
+                        )
+                    delay = _retry_delay(
+                        exc,
+                        attempts,
+                        policy.max_retry_delay_seconds,
+                    )
+                    if not _sleep_for_retry(delay, deadline):
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord delivery timed out while waiting to retry.",
+                            True,
+                        )
+                    continue
+                except (socket.timeout, TimeoutError):
+                    if replacement_attempt:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord replacement thread creation timed out; the "
+                            "route remains cleared.",
+                            True,
+                        )
+                    if attempts >= policy.max_attempts:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            f"Discord delivery timed out after {attempts} attempts.",
+                            True,
+                        )
+                    if not _sleep_for_retry(
+                        min(
+                            0.25 * 2 ** (attempts - 1),
+                            policy.max_retry_delay_seconds,
+                        ),
+                        deadline,
+                    ):
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord delivery timed out before another attempt.",
+                            True,
+                        )
+                    continue
+                except (error.URLError, OSError, http.client.HTTPException):
+                    if replacement_attempt:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord replacement thread connection failed; the "
+                            "route remains cleared.",
+                            True,
+                        )
+                    if attempts >= policy.max_attempts:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            f"Discord connection failed after {attempts} attempts.",
+                            True,
+                        )
+                    if not _sleep_for_retry(
+                        min(
+                            0.25 * 2 ** (attempts - 1),
+                            policy.max_retry_delay_seconds,
+                        ),
+                        deadline,
+                    ):
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord delivery timed out before another attempt.",
+                            True,
+                        )
+                    continue
+                except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                    if replacement_attempt:
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            "Discord replacement thread returned an invalid "
+                            "success response; the route remains cleared.",
+                            False,
+                        )
+                    return _delivery_failure(
+                        route_key,
+                        attempts,
+                        "Discord returned an invalid success response.",
+                        False,
+                    )
+
+                if thread_id is None:
+                    returned_thread_id = response_body.get("channel_id")
+                    if (
+                        not isinstance(returned_thread_id, str)
+                        or not returned_thread_id
+                    ):
+                        return _delivery_failure(
+                            route_key,
+                            attempts,
+                            (
+                                "Discord replacement thread response did not "
+                                "include an identity; the route remains cleared."
+                                if replacement_attempt
+                                else "Discord success response did not include a "
+                                "thread identity."
+                            ),
+                            False,
+                        )
+                    thread_id = returned_thread_id
+
+                returned_message_id = response_body.get("id")
+                if (
+                    not isinstance(returned_message_id, str)
+                    or not returned_message_id
+                ):
+                    return _delivery_failure(
+                        route_key,
+                        attempts,
+                        "Discord success response did not include a message identity.",
+                        False,
+                    )
+
+                routes[route_key] = thread_id
+
+                if event_id is not None:
+                    delivered_events.append(event_id)
+                    del delivered_events[:-MAX_DELIVERED_EVENTS]
+
+                return _delivery_success(
+                    route_key,
+                    thread_id,
+                    returned_message_id,
+                    attempts,
+                    route_recovered,
+                )
+    except RoutingStateTimeout:
+        return _delivery_failure(
+            route_key,
+            attempts,
+            "Routing state remained busy until the delivery timeout.",
+            True,
+        )
+
+    return _delivery_failure(
+        route_key,
+        attempts,
+        "Discord delivery stopped at the configured attempt limit.",
+        True,
+    )
+
+
+def _notification_outcome(
+    delivery: Mapping[str, object],
+    session_id: str,
+) -> Mapping[str, object]:
+    result = {
+        "session_id": session_id,
+        "status": delivery["status"],
+    }
+    for field in (
+        "thread_id",
+        "attempts",
+        "route_recovered",
+        "retryable",
+        "diagnostic",
+    ):
+        if field in delivery:
+            result[field] = delivery[field]
+    return result
+
+
 def publish_notification(
     notification: Mapping[str, object],
     endpoint: str,
     state_file: Union[str, Path],
     mention_user_id: Optional[str] = None,
-    milestones_enabled: bool = False,
     delivery_policy: Optional[DeliveryPolicy] = None,
 ) -> Mapping[str, object]:
     if not isinstance(notification, Mapping):
@@ -347,268 +665,72 @@ def publish_notification(
 
     _, _, attention = STATUS_PRESENTATION[status]
     configured_user_id = _mention_user_id(mention_user_id, attention)
-
-    if status == "milestone" and not milestones_enabled:
-        return {
-            "session_id": values["session_id"],
-            "status": "suppressed",
-        }
-
-    common_payload = {
-        "content": _message(
-            status,
-            values["task_title"],
-            values["project"],
-            values["result"],
-            values["validation"],
-            next_action,
-            configured_user_id,
-        ),
-        "allowed_mentions": _allowed_mentions(
-            configured_user_id,
-            attention,
-        ),
-    }
-
     session_id = values["session_id"]
-    deadline = time.monotonic() + policy.delivery_timeout_seconds
-    attempts = 0
-    route_recovered = False
-    try:
-        with RoutingState(state_file).locked_state(
-            timeout_seconds=policy.delivery_timeout_seconds
-        ) as state:
-            routes = state["routes"]
-            delivered_events = state["delivered_events"]
-            if not isinstance(routes, dict) or not isinstance(
-                delivered_events, list
-            ):
-                raise ValueError("routing state is invalid")
-            if event_id is not None and event_id in delivered_events:
-                duplicate = {
-                    "session_id": session_id,
-                    "status": "duplicate",
-                }
-                existing_thread = routes.get(session_id)
-                if isinstance(existing_thread, str):
-                    duplicate["thread_id"] = existing_thread
-                return duplicate
-            thread_id = routes.get(session_id)
-            while attempts < policy.max_attempts:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    return _failure_result(
-                        session_id,
-                        attempts,
-                        "Discord delivery timed out before another attempt.",
-                        True,
-                    )
 
-                payload = dict(common_payload)
-                if thread_id is None:
-                    payload["thread_name"] = _thread_name(
-                        values["task_title"],
-                        values["project"],
-                    )
-                replacement_attempt = route_recovered and thread_id is None
-                http_request = _request_payload(endpoint, thread_id, payload)
-                attempts += 1
-
-                try:
-                    with request.urlopen(
-                        http_request,
-                        timeout=min(policy.request_timeout_seconds, remaining),
-                    ) as response:
-                        response_body = _read_response(response)
-                except error.HTTPError as exc:
-                    if (
-                        thread_id is not None
-                        and not route_recovered
-                        and exc.code in STALE_THREAD_STATUSES
-                    ):
-                        routes.pop(session_id, None)
-                        thread_id = None
-                        route_recovered = True
-                        if attempts < policy.max_attempts:
-                            continue
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord thread route was stale and the attempt limit "
-                            "prevented replacement.",
-                            True,
-                        )
-
-                    transient = (
-                        exc.code in TRANSIENT_HTTP_STATUSES
-                        or 500 <= exc.code <= 599
-                    )
-                    if replacement_attempt:
-                        failure_kind = "transient " if transient else ""
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord replacement thread creation returned "
-                            f"{failure_kind}HTTP {exc.code}; the route remains "
-                            "cleared.",
-                            transient,
-                        )
-                    if not transient:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            f"Discord returned HTTP {exc.code}; notification was "
-                            "not delivered.",
-                            False,
-                        )
-                    if attempts >= policy.max_attempts:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            f"Discord returned transient HTTP {exc.code} after "
-                            f"{attempts} attempts.",
-                            True,
-                        )
-                    delay = _retry_delay(
-                        exc,
-                        attempts,
-                        policy.max_retry_delay_seconds,
-                    )
-                    if not _sleep_for_retry(delay, deadline):
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord delivery timed out while waiting to retry.",
-                            True,
-                        )
-                    continue
-                except (socket.timeout, TimeoutError):
-                    if replacement_attempt:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord replacement thread creation timed out; the "
-                            "route remains cleared.",
-                            True,
-                        )
-                    if attempts >= policy.max_attempts:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            f"Discord delivery timed out after {attempts} attempts.",
-                            True,
-                        )
-                    if not _sleep_for_retry(
-                        min(
-                            0.25 * 2 ** (attempts - 1),
-                            policy.max_retry_delay_seconds,
-                        ),
-                        deadline,
-                    ):
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord delivery timed out before another attempt.",
-                            True,
-                        )
-                    continue
-                except (error.URLError, OSError, http.client.HTTPException):
-                    if replacement_attempt:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord replacement thread connection failed; the "
-                            "route remains cleared.",
-                            True,
-                        )
-                    if attempts >= policy.max_attempts:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            f"Discord connection failed after {attempts} attempts.",
-                            True,
-                        )
-                    if not _sleep_for_retry(
-                        min(
-                            0.25 * 2 ** (attempts - 1),
-                            policy.max_retry_delay_seconds,
-                        ),
-                        deadline,
-                    ):
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord delivery timed out before another attempt.",
-                            True,
-                        )
-                    continue
-                except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-                    if replacement_attempt:
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            "Discord replacement thread returned an invalid "
-                            "success response; the route remains cleared.",
-                            False,
-                        )
-                    return _failure_result(
-                        session_id,
-                        attempts,
-                        "Discord returned an invalid success response.",
-                        False,
-                    )
-
-                if thread_id is None:
-                    returned_thread_id = response_body.get("channel_id")
-                    if (
-                        not isinstance(returned_thread_id, str)
-                        or not returned_thread_id
-                    ):
-                        return _failure_result(
-                            session_id,
-                            attempts,
-                            (
-                                "Discord replacement thread response did not "
-                                "include an identity; the route remains cleared."
-                                if replacement_attempt
-                                else "Discord success response did not include a "
-                                "thread identity."
-                            ),
-                            False,
-                        )
-                    thread_id = returned_thread_id
-                    routes[session_id] = thread_id
-
-                if event_id is not None:
-                    delivered_events.append(event_id)
-                    del delivered_events[:-MAX_DELIVERED_EVENTS]
-
-                return _success_result(
-                    session_id,
-                    thread_id,
-                    attempts,
-                    route_recovered,
-                )
-    except RoutingStateTimeout:
-        return _failure_result(
-            session_id,
-            attempts,
-            "Routing state remained busy until the delivery timeout.",
-            True,
-        )
-
-    return _failure_result(
+    delivery = _deliver(
         session_id,
-        attempts,
-        "Discord delivery stopped at the configured attempt limit.",
-        True,
+        _thread_name(values["task_title"], values["project"]),
+        {
+            "content": _message(
+                status,
+                values["task_title"],
+                values["project"],
+                values["result"],
+                values["validation"],
+                next_action,
+                configured_user_id,
+            ),
+            "allowed_mentions": _allowed_mentions(
+                configured_user_id,
+                attention,
+            ),
+        },
+        event_id,
+        endpoint,
+        state_file,
+        policy,
     )
+    return _notification_outcome(delivery, session_id)
 
 
-def publish_completion(
-    notification: Mapping[str, object],
+def publish_message(
+    message: Mapping[str, object],
     endpoint: str,
     state_file: Union[str, Path],
+    delivery_policy: Optional[DeliveryPolicy] = None,
 ) -> Mapping[str, object]:
-    """Backward-compatible name for the original completion-only interface."""
-    return publish_notification(notification, endpoint, state_file)
+    """Send one free-form message to the configured Discord forum."""
+
+    if not isinstance(message, Mapping):
+        raise TypeError("message payload must be a JSON object")
+
+    policy = delivery_policy or DeliveryPolicy()
+    policy.validate()
+    route_key = _optional_identifier(
+        message,
+        "route_key",
+        DEFAULT_MESSAGE_ROUTE_KEY,
+    )
+    assert route_key is not None
+    idempotency_key = _optional_identifier(message, "idempotency_key")
+    thread_name = _message_thread_name(
+        message.get("thread_name", DEFAULT_MESSAGE_THREAD_NAME)
+    )
+    delivery = _deliver(
+        route_key,
+        thread_name,
+        {
+            "content": _freeform_message(message.get("message")),
+            "allowed_mentions": _allowed_mentions(None, False),
+        },
+        idempotency_key,
+        endpoint,
+        state_file,
+        policy,
+    )
+    if delivery["status"] != "published":
+        return delivery
+    return {
+        **delivery,
+        "status": "sent",
+    }

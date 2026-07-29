@@ -1,0 +1,4 @@
+interface:
+  display_name: "Discord"
+  short_description: "Connect Discord and route message workflows"
+  default_prompt: "Use $discord to connect my Discord destination and verify it is ready."

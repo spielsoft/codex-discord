@@ -283,51 +283,5 @@ class AttentionHookTests(unittest.TestCase):
         self.assertEqual(retry.returncode, 0, retry.stderr)
         self.assertEqual(len(AttentionDiscordHandler.requests), 4)
 
-    def test_explicit_milestone_operation_requires_enablement(self):
-        command = [
-            sys.executable,
-            "-m",
-            "codex_discord",
-            "milestone",
-            "--endpoint",
-            self.endpoint,
-            "--state-file",
-            str(self.state_file),
-        ]
-        milestone = {
-            "session_id": "milestone-session",
-            "task_title": "Long-running task",
-            "project": "codex-to-discord",
-            "result": "Reached a meaningful checkpoint.",
-            "validation": "Focused checks passed.",
-        }
-
-        suppressed = subprocess.run(
-            command,
-            cwd=REPOSITORY_ROOT,
-            input=json.dumps(milestone),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        enabled = subprocess.run(
-            [*command, "--enable"],
-            cwd=REPOSITORY_ROOT,
-            input=json.dumps(milestone),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-
-        self.assertEqual(suppressed.returncode, 0, suppressed.stderr)
-        self.assertEqual(json.loads(suppressed.stdout)["status"], "suppressed")
-        self.assertEqual(enabled.returncode, 0, enabled.stderr)
-        self.assertEqual(json.loads(enabled.stdout)["status"], "published")
-        self.assertEqual(len(AttentionDiscordHandler.requests), 1)
-        body = AttentionDiscordHandler.requests[0]["body"]
-        self.assertIn("🔵 Milestone", body["content"])
-        self.assertEqual(body["allowed_mentions"]["users"], [])
-
-
 if __name__ == "__main__":
     unittest.main()

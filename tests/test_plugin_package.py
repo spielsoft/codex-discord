@@ -10,6 +10,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import error, parse, request
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,7 @@ WEBHOOK_TOKEN = "offline-plugin-contract-token"
 
 class PluginDiscordHandler(BaseHTTPRequestHandler):
     requests = []
+    response_status = 200
     lock = threading.Lock()
 
     def do_POST(self):
@@ -35,7 +37,7 @@ class PluginDiscordHandler(BaseHTTPRequestHandler):
         response = json.dumps(
             {"id": "plugin-message", "channel_id": "plugin-thread"}
         ).encode()
-        self.send_response(200)
+        self.send_response(self.__class__.response_status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(response)))
         self.end_headers()
@@ -48,6 +50,7 @@ class PluginDiscordHandler(BaseHTTPRequestHandler):
 class PluginPackageTests(unittest.TestCase):
     def setUp(self):
         PluginDiscordHandler.requests = []
+        PluginDiscordHandler.response_status = 200
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.install_root = Path(self.temporary_directory.name) / "codex-discord"
         shutil.copytree(PLUGIN_SOURCE, self.install_root)
@@ -105,6 +108,43 @@ class PluginPackageTests(unittest.TestCase):
             timeout=8,
         )
 
+    def start_onboarding(self):
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                str(self.install_root / "scripts" / "codex-discord"),
+                "onboard",
+                "--no-open",
+                "--timeout-seconds",
+                "8",
+            ],
+            cwd=self.temporary_directory.name,
+            env=self.environment(configured=False),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert process.stdout is not None
+        announcement = json.loads(process.stdout.readline())
+        self.assertEqual(announcement["status"], "connection-required")
+        self.assertTrue(announcement["url"].startswith("http://127.0.0.1:"))
+        return process, announcement["url"]
+
+    def submit_onboarding(self, onboarding_url, values, *, path="connect"):
+        endpoint = parse.urljoin(onboarding_url, path)
+        return request.urlopen(
+            request.Request(
+                endpoint,
+                data=parse.urlencode(values).encode(),
+                method="POST",
+            ),
+            timeout=4,
+        )
+
+    def finish_onboarding(self, process):
+        stdout, stderr = process.communicate(timeout=8)
+        return process.returncode, json.loads(stdout.strip()), stderr
+
     def test_manifest_and_default_hook_discovery_are_installable(self):
         manifest = json.loads(
             (self.install_root / ".codex-plugin" / "plugin.json").read_text()
@@ -122,65 +162,95 @@ class PluginPackageTests(unittest.TestCase):
             self.assertIn("$PLUGIN_ROOT", handler["command"])
             self.assertIn("$PLUGIN_DATA", handler["command"])
 
-    def test_listing_and_setup_skill_make_first_run_explicit(self):
+    def test_listing_and_router_make_connection_the_first_action(self):
         manifest = json.loads(
             (self.install_root / ".codex-plugin" / "plugin.json").read_text()
         )
-        setup_skill = (
-            self.install_root / "skills" / "discord-setup" / "SKILL.md"
+        router_skill = (
+            self.install_root / "skills" / "discord" / "SKILL.md"
         ).read_text()
 
         self.assertIn(
-            "Connect a Discord forum webhook",
+            "Connect a Discord forum destination",
             manifest["interface"]["longDescription"],
         )
         self.assertEqual(
             manifest["interface"]["defaultPrompt"][0],
-            "Set up Codex Discord notifications.",
+            "Connect Discord.",
         )
-        self.assertIn("scripts/codex-discord setup", setup_skill)
-        self.assertIn("Do not ask the user to paste", setup_skill)
-        self.assertIn("Codex task — <project>", setup_skill)
+        self.assertIn("scripts/codex-discord", router_skill)
+        self.assertIn("onboard", router_skill)
+        self.assertIn("Never ask the user to run", router_skill)
+        self.assertNotIn("connect --send-test", router_skill)
+        self.assertIn("Never ask the user to paste", router_skill)
+        self.assertIn("PersonalAssistant", router_skill)
 
-    def test_guided_setup_stores_private_config_and_enables_hooks(self):
-        unconfigured = self.environment(configured=False)
-        completed = self.run_plugin(
-            "setup",
-            input=f"{self.endpoint}\n{MENTION_USER_ID}\n",
-            environment=unconfigured,
+    def test_browser_onboarding_stores_config_tests_send_and_allows_hooks(self):
+        process, onboarding_url = self.start_onboarding()
+        with request.urlopen(onboarding_url, timeout=4) as response:
+            setup_page = response.read().decode()
+        self.assertIn("Connect Discord", setup_page)
+        self.assertIn('type="password"', setup_page)
+        self.assertIn("Connect and test", setup_page)
+        self.assertIn("formnovalidate", setup_page)
+        self.assertNotIn(str(self.install_root), setup_page)
+
+        with self.submit_onboarding(
+            onboarding_url,
+            {
+                "webhook": self.endpoint,
+                "mention_user_id": MENTION_USER_ID,
+            },
+        ) as response:
+            success_page = response.read().decode()
+
+        returncode, result, stderr = self.finish_onboarding(process)
+        self.assertEqual(returncode, 0, stderr)
+        self.assertIn("Discord is connected", success_page)
+        self.assertIn("plugin-message", success_page)
+        self.assertEqual(result["status"], "connected")
+        self.assertEqual(result["attention_mentions"], "configured")
+        self.assertEqual(result["verification"]["status"], "sent")
+        self.assertEqual(result["verification"]["message_id"], "plugin-message")
+        self.assertEqual(
+            result["next_action"],
+            "Ask Codex to send a message to Discord.",
         )
-
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        result = json.loads(completed.stdout)
-        self.assertEqual(result["status"], "configured")
-        self.assertEqual(result["next_action"], "Run doctor --send-test.")
-        combined = completed.stdout + completed.stderr
+        combined = json.dumps(result) + stderr
         self.assertNotIn(WEBHOOK_TOKEN, combined)
         self.assertNotIn(MENTION_USER_ID, combined)
         config_file = self.plugin_data / "config.json"
         self.assertTrue(config_file.is_file())
         self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
 
-        doctor = self.run_plugin("doctor", environment=unconfigured)
+        doctor = self.run_plugin(
+            "doctor",
+            environment=self.environment(configured=False),
+        )
         self.assertEqual(doctor.returncode, 0, doctor.stderr)
         self.assertEqual(json.loads(doctor.stdout)["status"], "ready")
-        self.assertEqual(PluginDiscordHandler.requests, [])
+        self.assertEqual(len(PluginDiscordHandler.requests), 1)
+        self.assertEqual(
+            PluginDiscordHandler.requests[0]["body"]["content"],
+            "Codex Discord is connected and ready.",
+        )
 
         definition = json.loads(
             (self.install_root / "hooks" / "hooks.json").read_text()
         )
         handler = definition["hooks"]["Stop"][0]["hooks"][0]
+        PluginDiscordHandler.requests = []
         hook = subprocess.run(
             handler["command"],
             cwd=self.temporary_directory.name,
-            env=unconfigured,
+            env=self.environment(configured=False),
             input=json.dumps(
                 {
                     "hook_event_name": "Stop",
                     "session_id": "configured-session",
                     "turn_id": "configured-turn",
                     "cwd": "/synthetic/project",
-                    "last_assistant_message": "Private setup is active.",
+                    "last_assistant_message": "Private connection is active.",
                 }
             ),
             text=True,
@@ -192,22 +262,93 @@ class PluginPackageTests(unittest.TestCase):
         self.assertEqual(hook.returncode, 0, hook.stderr)
         self.assertEqual(len(PluginDiscordHandler.requests), 1)
 
-    def test_guided_setup_rejects_invalid_values_without_storing_or_echoing(self):
+    def test_browser_onboarding_rejects_invalid_values_without_storing_or_echoing(self):
         invalid_webhook = (
             "https://example.invalid/api/webhooks/123456789012345678/"
             f"{WEBHOOK_TOKEN}"
         )
-        completed = self.run_plugin(
-            "setup",
-            input=f"{invalid_webhook}\nnot-a-numeric-id\n",
-            environment=self.environment(configured=False),
-        )
-
-        self.assertEqual(completed.returncode, 1)
+        process, onboarding_url = self.start_onboarding()
+        with self.assertRaises(error.HTTPError) as raised:
+            self.submit_onboarding(
+                onboarding_url,
+                {
+                    "webhook": invalid_webhook,
+                    "mention_user_id": "not-a-numeric-id",
+                },
+            )
+        response_body = raised.exception.read().decode()
+        self.assertEqual(raised.exception.code, 400)
+        self.assertIn("valid webhook", response_body)
+        self.assertNotIn(WEBHOOK_TOKEN, response_body)
         self.assertFalse((self.plugin_data / "config.json").exists())
-        combined = completed.stdout + completed.stderr
+
+        with self.submit_onboarding(onboarding_url, {}, path="cancel"):
+            pass
+        returncode, result, stderr = self.finish_onboarding(process)
+        self.assertEqual(returncode, 1)
+        self.assertEqual(result["status"], "cancelled")
+        combined = json.dumps(result) + stderr
         self.assertNotIn(WEBHOOK_TOKEN, combined)
         self.assertNotIn(invalid_webhook, combined)
+
+    def test_browser_onboarding_allows_send_only_configuration(self):
+        process, onboarding_url = self.start_onboarding()
+        with self.submit_onboarding(
+            onboarding_url,
+            {"webhook": self.endpoint, "mention_user_id": ""},
+        ):
+            pass
+        returncode, result, stderr = self.finish_onboarding(process)
+
+        self.assertEqual(returncode, 0, stderr)
+        self.assertEqual(result["status"], "connected")
+        self.assertEqual(result["attention_mentions"], "not-configured")
+        self.assertEqual(result["verification"]["status"], "sent")
+        stored = json.loads((self.plugin_data / "config.json").read_text())
+        self.assertNotIn("CODEX_DISCORD_MENTION_USER_ID", stored)
+
+        doctor = self.run_plugin(
+            "doctor",
+            environment=self.environment(configured=False),
+        )
+        self.assertEqual(doctor.returncode, 0, doctor.stderr)
+        doctor_result = json.loads(doctor.stdout)
+        self.assertEqual(doctor_result["status"], "ready")
+        self.assertEqual(
+            doctor_result["checks"]["mention_user_id"],
+            "not-configured",
+        )
+        self.assertEqual(len(PluginDiscordHandler.requests), 1)
+
+    def test_browser_onboarding_failure_is_visible_and_not_saved(self):
+        PluginDiscordHandler.response_status = 503
+        process, onboarding_url = self.start_onboarding()
+        with self.assertRaises(error.HTTPError) as raised:
+            self.submit_onboarding(
+                onboarding_url,
+                {"webhook": self.endpoint, "mention_user_id": ""},
+            )
+        response_body = raised.exception.read().decode()
+        self.assertEqual(raised.exception.code, 502)
+        self.assertIn("Discord returned transient HTTP 503", response_body)
+        self.assertFalse((self.plugin_data / "config.json").exists())
+        self.assertEqual(len(PluginDiscordHandler.requests), 3)
+        self.assertNotIn(WEBHOOK_TOKEN, response_body)
+
+        with self.submit_onboarding(onboarding_url, {}, path="cancel"):
+            pass
+        returncode, result, stderr = self.finish_onboarding(process)
+        self.assertEqual(returncode, 1)
+        self.assertEqual(result["status"], "cancelled")
+        self.assertNotIn(WEBHOOK_TOKEN, json.dumps(result) + stderr)
+
+    def test_superseded_terminal_connection_commands_are_not_exposed(self):
+        for command in ("setup", "connect"):
+            completed = self.run_plugin(command, input="{}\n")
+
+            self.assertEqual(completed.returncode, 1)
+            self.assertIn(f"unknown operation: {command}", completed.stderr)
+        self.assertEqual(PluginDiscordHandler.requests, [])
 
     def test_clean_install_doctor_is_local_only_and_uses_plugin_data(self):
         completed = self.run_plugin("doctor")
@@ -295,25 +436,52 @@ class PluginPackageTests(unittest.TestCase):
             [MENTION_USER_ID],
         )
 
-    def test_companion_milestone_command_is_explicit_and_quiet(self):
-        notification = {
-            "session_id": "clean-install-milestone",
-            "task_title": "Clean plugin package",
-            "project": "codex-discord",
-            "result": "The reusable package reached a checkpoint.",
-            "validation": "The isolated plugin contract passed.",
-        }
+    def test_superseded_milestone_surface_is_not_packaged(self):
+        completed = self.run_plugin("milestone", input="{}")
 
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("unknown operation: milestone", completed.stderr)
+        self.assertEqual(completed.stdout, "")
+        self.assertEqual(PluginDiscordHandler.requests, [])
+        self.assertFalse(
+            (
+                self.install_root
+                / "skills"
+                / "discord-milestone"
+                / "SKILL.md"
+            ).exists()
+        )
+
+    def test_outgoing_message_command_uses_the_configured_destination(self):
         completed = self.run_plugin(
-            "milestone",
-            input=json.dumps(notification),
+            "send",
+            input=json.dumps(
+                {
+                    "message": "One configured-destination message.",
+                    "thread_name": "Outgoing messages",
+                    "route_key": "plugin-send-contract",
+                    "idempotency_key": "plugin-send-contract:first",
+                }
+            ),
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(json.loads(completed.stdout)["status"], "published")
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {
+                "route_key": "plugin-send-contract",
+                "status": "sent",
+                "thread_id": "plugin-thread",
+                "message_id": "plugin-message",
+            },
+        )
         self.assertEqual(len(PluginDiscordHandler.requests), 1)
         request = PluginDiscordHandler.requests[0]["body"]
-        self.assertIn("Milestone", request["content"])
+        self.assertEqual(
+            request["content"],
+            "One configured-destination message.",
+        )
+        self.assertEqual(request["thread_name"], "Outgoing messages")
         self.assertEqual(request["allowed_mentions"]["users"], [])
 
     def test_uninstall_command_is_non_mutating_guidance(self):

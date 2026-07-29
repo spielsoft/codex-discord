@@ -16,11 +16,12 @@ env -u CODEX_DISCORD_WEBHOOK_URL \
   python3 -m unittest discover -s tests -v
 ```
 
-The retained tests exercise public commands, hook standard-input contracts,
-Discord-compatible HTTP requests, observable routing and persistence,
-best-effort retry bounds, redaction, local diagnostics, and an isolated copy of
-the plugin. The Slice 6 capture recorder and its tests were removed after the
-observed event shapes were converted into synthetic public hook fixtures.
+The retained tests exercise public commands, generic outgoing messages, hook
+standard-input contracts, Discord-compatible HTTP requests, observable routing
+and persistence, best-effort retry bounds, redaction, local diagnostics, and
+an isolated copy of the plugin. The Slice 6 capture recorder and its tests were
+removed after the observed event shapes were converted into synthetic public
+hook fixtures.
 
 Validate package structure and runtime parity separately:
 
@@ -48,9 +49,10 @@ Codex configuration nor contacts Discord.
 
 ## Opt-in live release smoke
 
-Make the real webhook and numeric mention ID available through untracked local
-configuration. Do not paste either value into the command or repository. Then
-choose a fresh state path and run the packaged diagnostic delivery twice:
+Make the real webhook and, when testing attention hooks, the numeric mention ID
+available through untracked local configuration. Do not paste either value into
+the command or repository. Then choose a fresh state path and run the packaged
+diagnostic delivery twice:
 
 ```sh
 export CODEX_DISCORD_STATE_FILE="/tmp/codex-discord-release-$(date +%s).json"
@@ -71,6 +73,8 @@ finish if the diagnostic route does not need to be retained.
 - Durable event digests suppress acknowledged replays, but a crash between
   remote acceptance and local state replacement can duplicate a message.
 - Routing entries do not expire automatically.
+- The outgoing-message MVP uses the one forum webhook selected during connection;
+  it does not select DMs, arbitrary channels, or multiple destinations.
 - The evidence covers the installed July 27, 2026 Codex CLI and paired desktop
   build. Desktop `PermissionRequest` was not observed, and future lifecycle
   schema compatibility must be retested after Codex upgrades.

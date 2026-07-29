@@ -44,7 +44,7 @@ class RepositoryDistributionTests(unittest.TestCase):
             readme,
         )
         self.assertIn("codex plugin add codex-discord@codex-discord", readme)
-        self.assertIn("Set up Codex Discord notifications", readme)
+        self.assertIn("Connect Discord", readme)
         self.assertIn("does not require a pre-existing forum post", readme)
 
     def test_github_ci_and_community_guidance_are_present(self):

@@ -3,18 +3,18 @@ import json
 import sys
 
 from .diagnostics import run_doctor
-from .publisher import DeliveryPolicy, publish_notification
+from .publisher import DeliveryPolicy, publish_message, publish_notification
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m codex_discord")
     subcommands = parser.add_subparsers(dest="command", required=True)
-    operation_parsers = []
-    for operation in ("publish", "milestone"):
+    for operation in ("publish", "send"):
         operation_parser = subcommands.add_parser(operation)
         operation_parser.add_argument("--endpoint", required=True)
         operation_parser.add_argument("--state-file", required=True)
-        operation_parser.add_argument("--mention-user-id")
+        if operation == "publish":
+            operation_parser.add_argument("--mention-user-id")
         operation_parser.add_argument(
             "--max-attempts",
             type=int,
@@ -30,12 +30,6 @@ def main() -> int:
             type=float,
             default=DeliveryPolicy.delivery_timeout_seconds,
         )
-        operation_parsers.append(operation_parser)
-    operation_parsers[0].add_argument(
-        "--enable-milestones",
-        action="store_true",
-    )
-    operation_parsers[1].add_argument("--enable", action="store_true")
     doctor_parser = subcommands.add_parser(
         "doctor",
         description=(
@@ -86,33 +80,37 @@ def main() -> int:
 
     try:
         notification = json.load(sys.stdin)
-        milestones_enabled = (
-            args.enable_milestones
-            if args.command == "publish"
-            else args.enable
-        )
-        if args.command == "milestone":
-            if not isinstance(notification, dict):
-                raise TypeError("notification must be a JSON object")
-            notification = {**notification, "status": "milestone"}
-        result = publish_notification(
-            notification,
-            args.endpoint,
-            args.state_file,
-            mention_user_id=args.mention_user_id,
-            milestones_enabled=milestones_enabled,
-            delivery_policy=DeliveryPolicy(
-                max_attempts=args.max_attempts,
-                request_timeout_seconds=args.request_timeout_seconds,
-                delivery_timeout_seconds=args.delivery_timeout_seconds,
-            ),
-        )
+        if args.command == "send":
+            result = publish_message(
+                notification,
+                args.endpoint,
+                args.state_file,
+                delivery_policy=DeliveryPolicy(
+                    max_attempts=args.max_attempts,
+                    request_timeout_seconds=args.request_timeout_seconds,
+                    delivery_timeout_seconds=args.delivery_timeout_seconds,
+                ),
+            )
+        else:
+            result = publish_notification(
+                notification,
+                args.endpoint,
+                args.state_file,
+                mention_user_id=args.mention_user_id,
+                delivery_policy=DeliveryPolicy(
+                    max_attempts=args.max_attempts,
+                    request_timeout_seconds=args.request_timeout_seconds,
+                    delivery_timeout_seconds=args.delivery_timeout_seconds,
+                ),
+            )
     except (json.JSONDecodeError, TypeError, ValueError) as error:
         print(f"{args.command} failed: {error}", file=sys.stderr)
         return 1
 
     json.dump(result, sys.stdout)
     sys.stdout.write("\n")
+    if args.command == "send" and result.get("status") == "delivery-failed":
+        return 2
     return 0
 
 
